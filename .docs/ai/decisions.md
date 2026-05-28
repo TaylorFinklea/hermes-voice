@@ -116,5 +116,15 @@
 
 **Rationale**: The app is always running when our triggers fire — PTT is foreground, scheduled auto-play only runs in `willPresent` (foreground), and background-audio keeps the app alive through `.speaking`. So in-process updates suffice; no push infra needed. The interactive stop button requires extracting `AudioPlayer` control into a shared `PlaybackController` (out of the SwiftUI VM) so a widget-process intent can call `stop()` — a bigger refactor that doesn't block the informational v1. Full spec: `.docs/ai/phases/live-activity-spec.md`.
 
-**Known follow-up**: `finish()` clears `self.activity` then ends it in a fire-and-forget `Task`, so a fast subsequent `showThinking/showSpeaking` can request a new activity mid-teardown (transient duplicate, or a rare silent no-show on the active-activity limit). `@MainActor` means no data race and the old activity is captured locally, so it's not a crash. Tracked in `current-state.md` Known Limits.
+**Known follow-up**: `finish()` clears `self.activity` then ends it in a fire-and-forget `Task`, so a fast subsequent `showThinking/showSpeaking` can request a new activity mid-teardown (transient duplicate, or a rare silent no-show on the active-activity limit). `@MainActor` means no data race and the old activity is captured locally, so it's not a crash. Tracked in `current-state.md` Known Limits. *(Resolved 2026-05-28, commit `e5b88e6` — see next entry.)*
+
+## [2026-05-28] Serialize ActivityKit ops via a task-chain, not a fire-and-forget end()
+
+**Context**: The v1 `LiveActivityController.finish()` nilled `self.activity` then ended it in an un-awaited `Task`. Because `finish()` is called from `ConversationViewModel.state.didSet` — a **synchronous** context — it cannot `await`. So a fast `finish()` → `showThinking()` (a barge-in: speaking → recording → thinking within tens of ms) could `Activity.request` a new activity while the old one was still tearing down: transient duplicate, or a rare silent no-show if the 8-activity system limit was momentarily hit.
+
+**Decision**: Route every ActivityKit operation through a serial `pending: Task<Void, Never>?` chain — each enqueued op `await`s the prior one before running. `request`/`update`/`end` therefore never overlap, and `end()` always completes before the next `request()`. `finish()` stays synchronously callable (it just enqueues). Also added a 180s `staleDate` (refreshed each update) as a dead-app safety net, and logged the previously-swallowed `Activity.request` error.
+
+**Alternatives considered**: (a) make `finish()` async + `await end()` before returning — rejected, the caller (`didSet`) is synchronous; (b) a `tearingDown` bool guard that no-ops new requests during teardown — rejected, it has its own gap (a legitimate new turn during teardown would silently show nothing, and the bool has no handle to await).
+
+**Rationale**: The task-chain is the idiomatic Swift-concurrency way to serialize async work on an actor and subsumes the flag approach (it *is* the handle). ~10 lines, no new dependencies, kills the whole race class rather than papering over it. `staleDate` was deliberately set generous (far longer than any single turn) so it never marks a live turn stale — distinct from `nil` ("never stale"), which left a force-quit activity stuck on the lock screen forever.
 

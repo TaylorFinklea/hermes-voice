@@ -24,13 +24,14 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 
 ### Then — daily-driver features (sequenced)
 - [ ] Bonjour/mDNS backend discovery + first-launch onboarding
-- [x] Live Activity / Dynamic Island — SHIPPED (`0b204e1`, 2026-05-28); v1 informational (tap opens app), interactive stop button is v2 per `.docs/ai/phases/live-activity-spec.md`. Build + tests re-verified green. Follow-ups: `finish()` race, `staleDate`, request-error logging; on-device smoke test still pending.
+- [x] Live Activity / Dynamic Island — SHIPPED (`0b204e1`, 2026-05-28); v1 informational (tap opens app), interactive stop button is v2 per `.docs/ai/phases/live-activity-spec.md`. Hardened in `e5b88e6` (teardown race fixed via serial task-chain, `staleDate` safety net, request errors logged). On-device smoke test still pending.
 - [ ] CarPlay support — **probe entitlement first**, Apple may refuse indie request
 
 ### Redesign polish (interleave with above)
 - [ ] On-device walkthrough every state, fix layout bugs
-- [ ] Scrollback tap → in-app expand transcript (today it opens HistoryView sheet)
-- [ ] ActionCard variants beyond calendar (device list, todo, file results) — driven by Hermes tool availability
+- [x] Scrollback tap → in-app expand transcript — SHIPPED (`e5b88e6`); opens in-app `TranscriptView` (live in-memory transcript), no longer the History sheet
+- [x] ActionCard variants beyond calendar — bulleted/numbered-list `.bullets` variant SHIPPED (`e5b88e6`). Device-list / todo-with-checkboxes / key-value still **blocked on structured backend tool output** (today only `ToolCall(name, preview, ok)` arrives)
+- [x] Scheduled-arrival badge in MainView (tap → resume session) — SHIPPED (`e5b88e6`)
 - [ ] Voice picker in Settings wired to ElevenLabs voices
 
 ### Dropped

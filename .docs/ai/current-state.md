@@ -16,8 +16,9 @@
 - **Phase B** (APNs + chime + foreground auto-play): `app/push.py` with aioapns, devices table + `/api/devices` register/unregister, `Services/NotificationManager.swift` + `ChimePlayer.swift` + `AppDelegate.swift`, bundled `hermes-chime.caf` (8-bit ascending arpeggio, ~330ms), new Settings toggles for notifications/auto-play/chime.
 - **Phase C** (Hermes voice integration): stdio MCP server at `app/mcp_schedules.py` exposing `create_schedule / list_schedules / delete_schedule`. Defaults to TLS verify=true with `HERMES_VOICE_CA_BUNDLE` env for custom CAs (security hook caught the original `verify=False` lazy default and rightly flagged it). User-facing setup guide at `backend/docs/schedules-setup.md`.
 - Dropped wake-word (Apple won't grant background mic to indie apps; Siri shortcut covers lock-screen).
-- **Live Activity / Dynamic Island** (commit `0b204e1`, 2026-05-28): ActivityKit local-update controller (`LiveActivityController`), shared `HermesActivityAttributes`, new widget-extension target (`HermesVoiceWidget`) rendering lock-screen + Dynamic Island (compact/expanded/minimal). Driven from `ConversationViewModel.syncLiveActivity()` (thinking/speaking; recording excluded) and `NotificationManager` for scheduled-fire auto-play. v1 informational — tap opens app; interactive stop is v2 per spec. Known follow-up: `finish()` fire-and-forget teardown can transiently double-up activities on rapid barge-in (see Known Limits).
-- Roadmap backlog still has: Bonjour/mDNS discovery + onboarding, CarPlay (entitlement probe first), redesign polish threads (on-device walkthrough, scrollback expand, ActionCard variants, voice picker).
+- **Live Activity / Dynamic Island** (commit `0b204e1`, 2026-05-28): ActivityKit local-update controller (`LiveActivityController`), shared `HermesActivityAttributes`, new widget-extension target (`HermesVoiceWidget`) rendering lock-screen + Dynamic Island (compact/expanded/minimal). Driven from `ConversationViewModel.syncLiveActivity()` (thinking/speaking; recording excluded) and `NotificationManager` for scheduled-fire auto-play. v1 informational — tap opens app; interactive stop is v2 per spec. **Hardened in `e5b88e6`**: the `finish()` teardown race is fixed (serial task-chain so `end()` always precedes the next `request()`), a 180s `staleDate` safety net was added, and the swallowed `Activity.request` error is now logged.
+- **Loose ends + polish** (commit `e5b88e6`, 2026-05-28): (1) wired `lastScheduledArrival` → a tappable "SCHEDULED UPDATE" badge in MainView (idle-only) that resumes the session and clears itself; (2) scrollback-rail tap now opens an in-app `TranscriptView` (live in-memory transcript) instead of the all-sessions History sheet; (3) added a tool-agnostic `.bullets` ActionCard variant (conservative bulleted/numbered-list detection, falls back to plain text).
+- Roadmap backlog still has: Bonjour/mDNS discovery + onboarding, CarPlay (entitlement probe first), remaining redesign polish (on-device walkthrough, voice picker; richer ActionCard variants need structured backend tool output).
 
 ## Build Status
 
@@ -26,6 +27,7 @@ Re-verified 2026-05-28 (post-Live-Activity commit `0b204e1`):
 - iOS: `xcodegen generate && xcodebuild -project HermesVoice.xcodeproj -scheme HermesVoice -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` → **BUILD SUCCEEDED** — app + embedded Watch + new `HermesVoiceWidget.appex`. `HermesActivityAttributes` compiles into both app and widget targets (no dup-symbol / missing-type).
 - App icon updated, chime bundled in app bundle, all UI toolbars match brand.
 - Schedules confirmed working end-to-end on device (push + chime + voice create/delete). **Live Activity NOT yet smoke-tested on a real device.**
+- **Re-verified after polish/hardening commit `e5b88e6`** (Live Activity serialization + arrival badge + in-app transcript + bullet ActionCard): iOS **BUILD SUCCEEDED** (incl. widget); backend untouched (41/41 holds). Not yet on-device.
 
 ## Schedules — CONFIRMED WORKING END-TO-END (2026-05-28)
 
@@ -65,10 +67,9 @@ Without MCP registration: schedules only creatable via in-app UI, not voice.
 ## Open Questions / Known Limits
 
 - Schedule fires synthesize TTS via `/api/replay` rather than reusing the original turn's audio. Slight extra latency on foreground auto-play; not worth caching.
-- `lastScheduledArrival` is published from `NotificationManager` but no view consumes it yet — tap-to-route-into-session is a small follow-up.
-- ActionCard variants beyond calendar still pending. ActionCard heuristic still keys on `calendar` tool name + HH:MM lines.
+- ActionCard now has calendar + a conservative `.bullets` (bulleted/numbered-list) variant. Richer variants (device list, todo with checkboxes, key-value) still need structured backend tool output — today only `ToolCall(name, preview, ok)` arrives, so detection is heuristic on freeform preview/text.
 - On-device walkthrough of the redesign is still un-done. Highest-priority polish item.
-- **Live Activity `finish()` race** (`LiveActivityController.swift:50-56`): clears `self.activity` synchronously then ends the old activity in a fire-and-forget `Task`, so a subsequent `showThinking/showSpeaking` can `Activity.request` a new one before teardown completes. Class is `@MainActor` so no data race, and the old activity is captured locally so it isn't accidentally ended — real-world impact is low (transient duplicate activity, or a rare silent no-show if the 8-activity limit is momentarily hit on rapid barge-in). **Not a crash.** Fix: gate new requests behind teardown (a `tearingDown` flag, or await `end()` before clearing). Two minor nits alongside: `staleDate: nil` (activity never auto-dims when idle) and the `Activity.request` catch swallows errors with no log.
+- Live Activity `finish()` race, `staleDate`, and swallowed-request-error nits are all FIXED in `e5b88e6` (serial task-chain + 180s stale safety net + logged catch). Still un-smoke-tested on a real device.
 
 ## Release tooling
 
@@ -76,10 +77,12 @@ Without MCP registration: schedules only creatable via in-app UI, not voice.
 
 ## Next Session
 
-Schedules (A/B/C) shipped + live-verified; Live Activity v1 shipped (build + 41/41 tests re-verified green 2026-05-28). Reasonable next steps from the roadmap (any of):
+Schedules (A/B/C) shipped + live-verified; Live Activity v1 shipped + hardened; loose ends (arrival badge) + polish (transcript expand, bullet cards) shipped in `e5b88e6` — all build-green 2026-05-28.
 
-1. Live Activity: on-device smoke test (PTT + scheduled fire) + harden `finish()` race / add `staleDate` / log request errors (see Known Limits).
-2. Wire `NotificationManager.lastScheduledArrival` into MainView (route to session, show badge).
-3. On-device walkthrough every state of the redesign; fix layout bugs.
-4. Bonjour/mDNS backend discovery + onboarding flow.
-5. CarPlay entitlement probe.
+**Active:** Workstream 2 — Bonjour/mDNS discovery + first-launch onboarding. User picked it but it has a real design fork (awaiting answer): mDNS does NOT traverse Tailscale (link-local multicast vs point-to-point overlay), and Tailscale MagicDNS is the primary remote path. So LAN Bonjour only helps same-Wi-Fi. Backend currently does not advertise any `_tcp` service; settings are manual URL+token in UserDefaults (no Keychain, no onboarding gate). Fork options surfaced: discovery scope (LAN Bonjour + manual/MagicDNS vs manual-only polished), custom `_hermes-voice._tcp` advertisement (needs backend zeroconf dep) vs generic `_http._tcp` browse, onboarding gate shape, Keychain-now-or-later. See `map-surfaces` workflow output for the full map.
+
+Other remaining (any of):
+1. On-device smoke test of Live Activity (PTT + scheduled fire) and the new arrival badge / transcript.
+2. On-device walkthrough every state of the redesign; fix layout bugs.
+3. Voice picker in Settings → ElevenLabs voices.
+4. CarPlay entitlement probe.

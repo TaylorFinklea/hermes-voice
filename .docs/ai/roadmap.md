@@ -24,7 +24,7 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 
 ### Then — daily-driver features (sequenced)
 - [ ] Bonjour/mDNS backend discovery + first-launch onboarding
-- [ ] Live Activity / Dynamic Island ("Hermes is speaking…" with tap-to-interrupt)
+- [x] Live Activity / Dynamic Island — SHIPPED (`0b204e1`, 2026-05-28); v1 informational (tap opens app), interactive stop button is v2 per `.docs/ai/phases/live-activity-spec.md`. Build + tests re-verified green. Follow-ups: `finish()` race, `staleDate`, request-error logging; on-device smoke test still pending.
 - [ ] CarPlay support — **probe entitlement first**, Apple may refuse indie request
 
 ### Redesign polish (interleave with above)

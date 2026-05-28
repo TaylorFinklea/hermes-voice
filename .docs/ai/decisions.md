@@ -106,3 +106,15 @@
 
 **Rationale**: One-button-many-meanings, but the glyph itself changes to telegraph intent (X during active turn, counterclockwise-arrow during idle).
 
+## [2026-05-28] Live Activity: local ActivityKit updates, v1 informational, no push token
+
+**Context**: Wanted lock-screen + Dynamic Island presence for in-flight Hermes turns (thinking/speaking). ActivityKit supports both local (`Activity.update`) and push-driven updates.
+
+**Decision**: Local updates only — a `@MainActor LiveActivityController` singleton calls `Activity.request/.update/.end` in-process, driven from `ConversationViewModel.state.didSet` (`.sending/.thinking → showThinking`, `.speaking → showSpeaking`, `.idle/.error/.recording → finish`) plus `NotificationManager` for scheduled-fire foreground auto-play. No ActivityKit push token. v1 is informational (tap opens the app); the interactive `LiveActivityIntent` stop button is deferred to v2.
+
+**Alternatives considered**: Push-to-update Live Activity (needs an APNs Live Activity channel + push-token plumbing); ship the interactive stop button in v1.
+
+**Rationale**: The app is always running when our triggers fire — PTT is foreground, scheduled auto-play only runs in `willPresent` (foreground), and background-audio keeps the app alive through `.speaking`. So in-process updates suffice; no push infra needed. The interactive stop button requires extracting `AudioPlayer` control into a shared `PlaybackController` (out of the SwiftUI VM) so a widget-process intent can call `stop()` — a bigger refactor that doesn't block the informational v1. Full spec: `.docs/ai/phases/live-activity-spec.md`.
+
+**Known follow-up**: `finish()` clears `self.activity` then ends it in a fire-and-forget `Task`, so a fast subsequent `showThinking/showSpeaking` can request a new activity mid-teardown (transient duplicate, or a rare silent no-show on the active-activity limit). `@MainActor` means no data race and the old activity is captured locally, so it's not a crash. Tracked in `current-state.md` Known Limits.
+

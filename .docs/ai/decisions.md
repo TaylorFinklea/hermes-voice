@@ -56,6 +56,22 @@
 
 **Rationale**: Restores monkey-patchability without forcing every caller to thread the path explicitly. The cost is one extra function call per CRUD operation — irrelevant. This pattern should be the default for any module-global-default plumbing where tests need to override.
 
+## [2026-05-28] aioapns `key` is PEM contents, not a file path
+
+**Context**: First live scheduled fire pushed nothing — backend log showed `Unable to load PEM file ... MalformedFraming` per device, even though the .p8 loaded fine via `cryptography.load_pem_private_key`. `push.py` passed `key=settings.apns_key_path` (the file path).
+
+**Decision**: Read the .p8 file and pass its contents: `key_pem = Path(apns_key_path).read_text(); APNs(key=key_pem, ...)`.
+
+**Rationale**: aioapns hands `key` straight to `jwt.encode(key=..., algorithm="ES256")`. PyJWT expects the PEM key material (str/bytes), so a path string gets parsed as a key and fails with the misleading framing error. Verified the fix live: `send_push(...)` returned `devices delivered to: 1` and the notification + chime arrived on device. Schedules feature is now confirmed working end-to-end (executor → Hermes turn → APNs).
+
+## [2026-05-28] Always re-inject @EnvironmentObject across nested sheets
+
+**Context**: Build 3 (first on-device TestFlight) crashed instantly when opening Settings → Manage schedules. SchedulesView declares `@EnvironmentObject var settings: AppSettings` but was presented as a sheet *from within* SettingsView (itself a sheet from MainView). Environment objects don't reliably propagate across nested sheet boundaries; in a Release build the missing object is a hard `fatalError` on first render — looks like the view "instantly closes." First-level sheets (MainView → Settings/History) inherit fine, so the simulator-less workflow never caught it.
+
+**Decision**: Every sheet that presents a view requiring an env object injects it explicitly — `SchedulesView().environmentObject(settings)`. This matches the pattern already used for ScheduleEditView and ConversationDetailView.
+
+**Rationale**: Relying on implicit propagation is the actual bug class here, not a one-off. Explicit injection at every sheet boundary is cheap and removes the whole category. Lesson for on-device testing: env-object crashes are Release-only and sheet-depth-dependent — they cannot be caught by `xcodebuild build` alone; only running the app surfaces them.
+
 ## [2026-05-27] Schedules Phase C: stdio MCP server proxying to REST, not native MCP HTTP endpoints
 
 **Context**: Hermes accepts both stdio and HTTP MCP servers via `hermes mcp add`. We could expose MCP-over-HTTP from the existing FastAPI app, or ship a small stdio Python script.

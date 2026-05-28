@@ -31,12 +31,22 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
 logger = logging.getLogger("hermes_voice.mcp")
+
+# Load backend/.env so the MCP server shares the backend's single source of
+# truth for HERMES_VOICE_TOKEN (and base URL if set there). Path is relative
+# to this file, so it works regardless of the cwd Hermes spawns us in.
+# override=False lets explicit --env values passed by `hermes mcp add` win.
+_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+if _ENV_PATH.exists():
+    load_dotenv(_ENV_PATH, override=False)
 
 # Loaded fresh on every tool call so a backend URL/token change doesn't
 # require restarting Hermes.

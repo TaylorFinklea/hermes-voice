@@ -81,6 +81,15 @@ async def send_push(
         logger.warning("aioapns not installed; cannot send push")
         return 0
 
+    # aioapns hands `key` straight to jwt.encode(), which expects the PEM
+    # CONTENTS — not a file path. Read the .p8 once here. (Passing the path
+    # produces a misleading "Unable to load PEM file / MalformedFraming".)
+    try:
+        key_pem = Path(settings.apns_key_path).read_text()
+    except OSError as e:
+        logger.warning("could not read APNs key at %s: %s", settings.apns_key_path, e)
+        return 0
+
     payload = _build_payload(body, schedule_id, session_id)
     sent = 0
 
@@ -95,7 +104,7 @@ async def send_push(
         use_sandbox = env == "sandbox" or settings.apns_use_sandbox
         try:
             client = APNs(
-                key=settings.apns_key_path,
+                key=key_pem,
                 key_id=settings.apns_key_id,
                 team_id=settings.apns_team_id,
                 topic=settings.apns_bundle_id,

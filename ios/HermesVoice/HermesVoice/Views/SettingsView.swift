@@ -111,7 +111,11 @@ struct SettingsView: View {
                 .foregroundStyle(HVColor.creamDim)
         }
         .sheet(isPresented: $showSchedules) {
+            // Re-inject explicitly: environment objects don't reliably
+            // propagate across nested sheet boundaries (Settings is itself
+            // a sheet), and SchedulesView hard-requires AppSettings.
             SchedulesView()
+                .environmentObject(settings)
         }
     }
 

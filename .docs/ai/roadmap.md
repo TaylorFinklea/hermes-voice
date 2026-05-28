@@ -14,7 +14,7 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 ### Next — scoped via `.docs/ai/phases/schedules-spec.md`
 - [x] Schedules Phase A — store + cron + in-app UI (no push)
 - [x] Schedules Phase B — APNs + chime + foreground auto-play (code complete; needs user's APNs .p8 key to actually deliver)
-- [x] Schedules Phase C — Hermes tool integration for voice creation/cancel (MCP server complete; needs user to run `hermes mcp add hermes-voice ...` per `backend/docs/schedules-setup.md`)
+- [x] Schedules Phase C — Hermes voice creation/cancel via MCP — REGISTERED + VERIFIED LIVE (create + delete by voice both confirmed)
 
 ### In progress — TestFlight (pulled forward; unblocks APNs topic-scoping + on-device testing)
 - [x] Code prep: Push entitlement (`aps-environment`), version numbers, signing config

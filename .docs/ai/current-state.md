@@ -25,6 +25,19 @@
 - App icon updated, chime bundled in app bundle, all UI toolbars match brand
 - Nothing smoke-tested on real device yet
 
+## Schedules — CONFIRMED WORKING END-TO-END (2026-05-28)
+
+Push pipeline verified live on device: executor fires → Hermes turn → APNs push delivers (chime + body). Two on-device-only bugs found + fixed during the smoke test:
+- SchedulesView crashed on open (nested-sheet env-object gap) — fixed in build 4.
+- APNs delivered nothing (`push.py` passed the .p8 *path* to aioapns, which wants PEM *contents*) — fixed; `send_push` returned `delivered: 1` after.
+Device registered as iOS/production; APNS_USE_SANDBOX=false is correct for the TestFlight build. Backend restarted with both fixes loaded.
+
+**Phase C voice creation also verified working (2026-05-28).** MCP server registered via `hermes mcp add hermes-voice` (3 tools enabled) — `~/.hermes/config.yaml` is NOT chezmoi-managed, so no drift. Registered as the backend venv python running `app/mcp_schedules.py` directly (self-contained, no relative imports) with `--env HERMES_VOICE_BASE_URL=https://scadrial.tailceb58.ts.net:8765`; the script loads `backend/.env` for the auth token. Live test: "create a schedule… every 2 hours" → Hermes called create_schedule (parsed cadence + refined prompt); "stop the market check schedule" → list_schedules + delete_schedule by name. Both confirmed against the store.
+
+Minor follow-up: voice-created schedules show `source=ios` (the POST endpoint hardcodes it); would be nicer as `source=voice`. Not blocking.
+
+Still uncommitted: build 4 `project.yml` bump + the two fixes (SettingsView env injection, push.py PEM read). Worth a commit.
+
 ## Blockers
 
 None for code. Sequencing pivoted: we're doing **TestFlight first** because it's

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+        "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Auto-starting LaunchAgent for the Hermes Voice backend.
+
+         Install:
+           cp dev.finklea.hermesvoice.backend.plist ~/Library/LaunchAgents/
+           launchctl bootstrap gui/$(id -u) \
+             ~/Library/LaunchAgents/dev.finklea.hermesvoice.backend.plist
+           launchctl kickstart -k gui/$(id -u)/dev.finklea.hermesvoice.backend
+
+         Stop / reload:
+           launchctl bootout gui/$(id -u) \
+             ~/Library/LaunchAgents/dev.finklea.hermesvoice.backend.plist
+
+         Tail logs:
+           tail -F /tmp/hermes-voice.log
+    -->
+
+    <key>Label</key>
+    <string>dev.finklea.hermesvoice.backend</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/uv</string>
+        <string>run</string>
+        <string>--directory</string>
+        <string>/Users/tfinklea/git/hermes-voice/backend</string>
+        <string>python</string>
+        <string>-m</string>
+        <string>app</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HERMES_VOICE_HOST</key>
+        <string>0.0.0.0</string>
+        <key>HERMES_VOICE_CERT</key>
+        <string>/Users/tfinklea/.config/tailscale-certs/scadrial.crt</string>
+        <key>HERMES_VOICE_KEY</key>
+        <string>/Users/tfinklea/.config/tailscale-certs/scadrial.key</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/tfinklea/.local/bin</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/tfinklea/git/hermes-voice/backend</string>
+
+    <!-- Auto-start at login -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Respawn on crash; throttle to avoid loops -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/hermes-voice.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/hermes-voice.log</string>
+
+    <!-- Be a polite background process -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>LowPriorityIO</key>
+    <false/>
+    <key>Nice</key>
+    <integer>0</integer>
+</dict>
+</plist>

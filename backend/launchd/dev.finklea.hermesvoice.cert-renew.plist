@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+        "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Renews the Tailscale-issued TLS cert every 30 days.
+
+         Tailscale certs are 90-day Let's Encrypt; renewing at 30 days
+         gives us 60 days of headroom if a renewal fails. After renewing,
+         we kick the backend so uvicorn loads the new cert.
+
+         Install:
+           cp dev.finklea.hermesvoice.cert-renew.plist ~/Library/LaunchAgents/
+           launchctl bootstrap gui/$(id -u) \
+             ~/Library/LaunchAgents/dev.finklea.hermesvoice.cert-renew.plist
+
+         Force-run now:
+           launchctl kickstart -k gui/$(id -u)/dev.finklea.hermesvoice.cert-renew
+    -->
+
+    <key>Label</key>
+    <string>dev.finklea.hermesvoice.cert-renew</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/tfinklea/git/hermes-voice/backend/launchd/renew-cert.sh</string>
+    </array>
+
+    <!-- Run every 30 days (in seconds) -->
+    <key>StartInterval</key>
+    <integer>2592000</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/hermes-voice-cert-renew.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/hermes-voice-cert-renew.log</string>
+</dict>
+</plist>

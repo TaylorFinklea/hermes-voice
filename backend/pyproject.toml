@@ -1,0 +1,52 @@
+[project]
+name = "hermes-voice-backend"
+version = "0.1.0"
+description = "Local backend for the Hermes Voice iOS app"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "python-multipart>=0.0.12",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+    "aioapns>=3.4",
+]
+
+[project.optional-dependencies]
+# Local-only STT/TTS (no API calls). Install with: uv pip install -e '.[local]'
+local = [
+    "faster-whisper>=1.1.0",
+    "piper-tts>=1.2.0",
+]
+# Stdio MCP server that Hermes Agent uses to create/list/delete schedules
+# via voice. Install with: uv pip install -e '.[mcp]'
+mcp = [
+    "mcp>=1.2",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.7",
+    "mcp>=1.2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

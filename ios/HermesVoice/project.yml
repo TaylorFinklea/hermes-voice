@@ -1,0 +1,111 @@
+name: HermesVoice
+options:
+  bundleIdPrefix: dev.finklea
+  deploymentTarget:
+    iOS: "17.0"
+    watchOS: "10.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    WATCHOS_DEPLOYMENT_TARGET: "10.0"
+    DEVELOPMENT_TEAM: K7CBQW6MPG
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_PREVIEWS: YES
+    # Shared version across iOS + Watch. Bump CURRENT_PROJECT_VERSION on
+    # every TestFlight upload (App Store Connect rejects duplicate builds);
+    # MARKETING_VERSION is the user-facing version string.
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "3"
+
+targets:
+  HermesVoice:
+    type: application
+    platform: iOS
+    sources:
+      - path: HermesVoice
+    dependencies:
+      - target: HermesVoiceWatch
+        embed: true
+    info:
+      path: HermesVoice/Info.plist
+      properties:
+        # Shorter display name keeps Siri phrases natural: "Ask Hermes ..."
+        # instead of "Ask Hermes Voice ...". The in-app title is still
+        # "Hermes Voice" in MainView. Revert here if you prefer the longer
+        # name on the home screen icon.
+        CFBundleDisplayName: Hermes
+        # App only uses standard HTTPS/TLS (exempt encryption), so declare
+        # no non-exempt encryption. Skips the "Missing Compliance" prompt on
+        # every TestFlight upload. If you ever add custom/proprietary crypto,
+        # revisit this.
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSMicrophoneUsageDescription: >-
+          Hermes Voice needs the microphone to capture what you say and send it
+          to your local Hermes Agent.
+        # Required since iOS 14 for any connection to a "local" network
+        # address. This includes private RFC1918 ranges AND Tailscale
+        # (100.64.0.0/10 CGNAT). Without this, iOS silently refuses local
+        # network requests and surfaces the failure as a misleading ATS error.
+        NSLocalNetworkUsageDescription: >-
+          Hermes Voice connects to your self-hosted backend over your local
+          network or Tailscale to talk to Hermes Agent.
+        # Personal app talking to a self-hosted backend over LAN/Tailscale —
+        # both are plain HTTP. Apple's NSAllowsLocalNetworking flag does NOT
+        # cover Tailscale's 100.64.0.0/10 CGNAT range, so we open ATS fully.
+        # If this ever ships to App Store, tighten via NSExceptionDomains.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+        UIBackgroundModes:
+          - audio
+          - remote-notification
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.finklea.hermesvoice
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: HermesVoice/HermesVoice.entitlements
+
+  HermesVoiceWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: HermesVoiceWatch
+    info:
+      path: HermesVoiceWatch/Info.plist
+      properties:
+        CFBundleDisplayName: Hermes
+        WKApplication: true
+        WKWatchOnly: false
+        # Companion-relayed: this Watch app pairs with the iPhone bundle.
+        # Voice requests flow Watch -> iPhone -> backend.
+        WKCompanionAppBundleIdentifier: dev.finklea.hermesvoice
+        NSMicrophoneUsageDescription: >-
+          Hermes Voice needs the microphone to capture what you say.
+        # Same Tailscale-friendly ATS posture as the iOS side, in case the
+        # Watch ever talks to the backend directly.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.finklea.hermesvoice.watchkitapp
+        TARGETED_DEVICE_FAMILY: "4"
+        GENERATE_INFOPLIST_FILE: NO
+        SUPPORTS_MACCATALYST: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

@@ -30,7 +30,12 @@ final class ConversationViewModel: ObservableObject {
     /// header arrives, then we count anything else as "processing".
     enum SendingPhase: Equatable { case uploading, processing }
 
-    @Published private(set) var state: State = .idle
+    @Published private(set) var state: State = .idle {
+        didSet {
+            guard state != oldValue else { return }
+            syncLiveActivity()
+        }
+    }
     @Published private(set) var messages: [Message] = []
     @Published private(set) var sessionId: String? = nil
     @Published private(set) var sendingPhase: SendingPhase = .uploading
@@ -264,5 +269,20 @@ final class ConversationViewModel: ObservableObject {
 
     private func isError(_ s: State) -> Bool {
         if case .error = s { return true } else { return false }
+    }
+
+    /// Drive the lock-screen Live Activity from the turn state machine.
+    /// .sending/.thinking is the "waiting on Hermes" window; .speaking is
+    /// playback. Recording is intentionally excluded (you're holding the
+    /// phone then). Idle/error/recording tear the activity down.
+    private func syncLiveActivity() {
+        switch state {
+        case .sending, .thinking:
+            LiveActivityController.shared.showThinking(detail: lastUserText)
+        case .speaking:
+            LiveActivityController.shared.showSpeaking(detail: lastAssistantText ?? "")
+        case .idle, .error, .recording:
+            LiveActivityController.shared.finish()
+        }
     }
 }

@@ -33,6 +33,8 @@
 	<string>Hermes Voice connects to your self-hosted backend over your local network or Tailscale to talk to Hermes Agent.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Hermes Voice needs the microphone to capture what you say and send it to your local Hermes Agent.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

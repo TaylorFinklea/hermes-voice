@@ -171,6 +171,12 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         if settings.foregroundChimeEnabled {
             await ChimePlayer.shared.play()
         }
+        // Surface the reply on the lock screen / Dynamic Island for the
+        // duration of playback — this is exactly when the phone is likely
+        // locked or pocketed.
+        LiveActivityController.shared.showSpeaking(detail: arrival.body)
+        defer { LiveActivityController.shared.finish() }
+
         // Replay via the existing /api/replay endpoint — this re-synthesizes
         // the reply text fresh (push body is text, not the original audio).
         let api = HermesVoiceAPI(baseURL: settings.backendURL, authToken: settings.authToken)

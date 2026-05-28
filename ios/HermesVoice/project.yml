@@ -29,9 +29,13 @@ targets:
     dependencies:
       - target: HermesVoiceWatch
         embed: true
+      - target: HermesVoiceWidget
+        embed: true
     info:
       path: HermesVoice/Info.plist
       properties:
+        # Live Activities (lock screen + Dynamic Island for in-flight turns).
+        NSSupportsLiveActivities: true
         # Shorter display name keeps Siri phrases natural: "Ask Hermes ..."
         # instead of "Ask Hermes Voice ...". The in-app title is still
         # "Hermes Voice" in MainView. Revert here if you prefer the longer
@@ -109,3 +113,25 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         SUPPORTS_MACCATALYST: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  HermesVoiceWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      # The widget's own files, plus the shared ActivityAttributes (must be
+      # compiled into both app + widget) and Brand tokens for styling.
+      - path: HermesVoiceWidget
+      - path: HermesVoice/Shared/HermesActivityAttributes.swift
+      - path: HermesVoice/DesignSystem/Brand.swift
+    info:
+      path: HermesVoiceWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Hermes
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.finklea.hermesvoice.widget
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        SUPPORTS_MACCATALYST: NO

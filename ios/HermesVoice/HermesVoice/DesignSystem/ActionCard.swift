@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Structured response cards (calendar today; lists/files/devices later).
+// Structured response cards (calendar + bulleted lists today; files/devices later).
 //
 // Action cards render when an assistant reply can be expressed as a list of
 // rows more cleanly than as prose. The component itself works on a small
@@ -11,6 +11,7 @@ import SwiftUI
 
 enum ActionCard: Equatable {
     case calendar(items: [CalendarItem])
+    case bullets(title: String, items: [String])
 
     struct CalendarItem: Identifiable, Equatable {
         let id = UUID()
@@ -32,10 +33,15 @@ enum ActionCard: Equatable {
         let hasCalendarTool = messages.contains { msg in
             msg.role == .toolCall && (msg.toolCall?.name.lowercased().contains("calendar") ?? false)
         }
-        guard hasCalendarTool else { return nil }
-
-        let items = parseTimeLines(in: assistant.text)
-        return items.count >= 2 ? .calendar(items: items) : nil
+        if hasCalendarTool {
+            let items = parseTimeLines(in: assistant.text)
+            if items.count >= 2 { return .calendar(items: items) }
+        }
+        // Tool-agnostic fallback: a reply that is mostly a bulleted or numbered
+        // list reads better as a card. Conservative on purpose (≥3 bullet lines
+        // forming the majority of the reply) so prose with an incidental dash
+        // doesn't get turned into a card — a miss just falls back to plain text.
+        return detectBullets(in: assistant.text)
     }
 
     private static let timeLine = #/^\s*(\d{1,2}:\d{2})\s*[—–\-:]\s*(.+?)\s*$/#
@@ -51,6 +57,31 @@ enum ActionCard: Equatable {
             return CalendarItem(time: time, title: title, meta: meta)
         }
     }
+
+    // A leading "-", "•", "*", or "1." / "1)" marker followed by text.
+    private static let bulletLine = #/^\s*(?:[-•*]|\d+[.)])\s+(.+?)\s*$/#
+
+    /// Detect a predominantly bulleted/numbered reply. Returns nil unless at
+    /// least 3 bullet lines are present AND they make up the majority of the
+    /// non-empty lines — keeps false positives (prose with a stray dash) low.
+    private static func detectBullets(in text: String) -> ActionCard? {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        guard lines.count >= 3 else { return nil }
+        var items: [String] = []
+        var leadingTitle = ""
+        for (idx, line) in lines.enumerated() {
+            if let m = line.firstMatch(of: bulletLine) {
+                items.append(String(m.1))
+            } else if idx == 0 {
+                // Allow a single short intro line ("Here's your list:") as a title.
+                let t = line.trimmingCharacters(in: .whitespaces)
+                if t.count <= 60 { leadingTitle = t }
+            }
+        }
+        guard items.count >= 3,
+              Double(items.count) >= Double(lines.count) * 0.6 else { return nil }
+        return .bullets(title: leadingTitle, items: items)
+    }
 }
 
 struct ActionCardView: View {
@@ -60,6 +91,8 @@ struct ActionCardView: View {
         switch card {
         case .calendar(let items):
             CalendarCard(items: items)
+        case .bullets(let title, let items):
+            BulletsCard(title: title, items: items)
         }
     }
 }
@@ -124,5 +157,64 @@ private struct CalendarCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: 12).strokeBorder(HVColor.hairline, lineWidth: 0.5)
         )
+    }
+}
+
+private struct BulletsCard: View {
+    let title: String
+    let items: [String]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 11))
+                    .foregroundStyle(HVColor.bronze)
+                Text(headerText)
+                    .font(HVFont.captionTiny.weight(.semibold))
+                    .tracking(1.0)
+                    .foregroundStyle(HVColor.bronze)
+                    .lineLimit(1)
+                Spacer()
+                Text("\(items.count) items")
+                    .font(HVFont.micro)
+                    .foregroundStyle(HVColor.creamDim)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(0.15))
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(HVColor.hairline).frame(height: 0.5)
+            }
+
+            ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "circle.fill")
+                        .font(.system(size: 5))
+                        .foregroundStyle(HVColor.amber)
+                        .padding(.top, 7)
+                    Text(item)
+                        .font(HVFont.body)
+                        .foregroundStyle(HVColor.cream)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                if idx < items.count - 1 {
+                    Rectangle().fill(HVColor.hairline).frame(height: 0.5)
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12).fill(HVColor.creamSurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12).strokeBorder(HVColor.hairline, lineWidth: 0.5)
+        )
+    }
+
+    private var headerText: String {
+        title.isEmpty ? "LIST" : title.uppercased()
     }
 }

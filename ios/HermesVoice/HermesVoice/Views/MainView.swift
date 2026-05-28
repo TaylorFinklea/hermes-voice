@@ -3,8 +3,10 @@ import SwiftUI
 struct MainView: View {
     @EnvironmentObject var conversation: ConversationViewModel
     @EnvironmentObject var settings: AppSettings
+    @StateObject private var notifications = NotificationManager.shared
     @State private var showSettings = false
     @State private var showHistory = false
+    @State private var showTranscript = false
     @State private var textInput = ""
     @State private var typingMode = false
 
@@ -14,9 +16,19 @@ struct MainView: View {
                 HVColor.bg.ignoresSafeArea()
 
                 VStack(spacing: 0) {
+                    if conversation.state == .idle, let arrival = notifications.lastScheduledArrival {
+                        ScheduledArrivalBadge(arrival: arrival) {
+                            conversation.resume(sessionId: arrival.sessionId)
+                            notifications.clearArrival()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.top, 6)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
                     ScrollbackRail(
                         items: scrollbackTurns,
-                        onTapTurn: { showHistory = true }
+                        onTapTurn: { showTranscript = true }
                     )
 
                     ScrollView {
@@ -30,6 +42,7 @@ struct MainView: View {
                     .scrollIndicators(.hidden)
                 }
                 .padding(.top, 4)
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: notifications.lastScheduledArrival)
 
                 VStack(spacing: 0) {
                     Spacer()
@@ -48,6 +61,12 @@ struct MainView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(isPresented: $showHistory) { HistoryView() }
+            .sheet(isPresented: $showTranscript) {
+                // Explicit env-object injection across the sheet boundary —
+                // implicit propagation is the documented Release-only crash
+                // class (see decisions.md / commit 6b91d4e).
+                TranscriptView().environmentObject(conversation)
+            }
         }
         .tint(HVColor.amber)
         .preferredColorScheme(.dark)
@@ -143,6 +162,52 @@ struct ScrollbackRail: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
         }
+    }
+}
+
+// MARK: - Scheduled-arrival badge
+
+/// Surfaces the most-recent scheduled-fire notification while the app is at
+/// rest. Tapping resumes that Hermes session so the user can continue it.
+/// Shown only in `.idle` so it never covers an active turn.
+private struct ScheduledArrivalBadge: View {
+    let arrival: NotificationManager.ScheduledArrival
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                Image(systemName: "bell.badge.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(HVColor.gold)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("SCHEDULED UPDATE")
+                        .font(HVFont.micro.weight(.semibold))
+                        .tracking(1.0)
+                        .foregroundStyle(HVColor.gold)
+                    Text(arrival.body)
+                        .font(HVFont.captionTiny)
+                        .foregroundStyle(HVColor.cream)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(HVColor.gold)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 10).fill(HVColor.goldGlow.opacity(0.5))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(HVColor.gold.opacity(0.35), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open scheduled update")
     }
 }
 

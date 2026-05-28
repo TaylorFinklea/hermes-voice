@@ -10,7 +10,7 @@ import UserNotifications
 /// requires APNs delivery (real device or simulator with Apple Silicon Mac);
 /// it silently fails on plain simulator runs.
 @MainActor
-final class NotificationManager: NSObject {
+final class NotificationManager: NSObject, ObservableObject {
     static let shared = NotificationManager()
 
     private weak var settings: AppSettings?
@@ -37,6 +37,12 @@ final class NotificationManager: NSObject {
     /// so we can read backend URL / auth token + which features are on.
     func configure(settings: AppSettings) {
         self.settings = settings
+    }
+
+    /// Clear the pending scheduled-arrival badge (after the user taps it to
+    /// route into the session, or otherwise dismisses it).
+    func clearArrival() {
+        lastScheduledArrival = nil
     }
 
     /// Request authorization from the user. Safe to call repeatedly;

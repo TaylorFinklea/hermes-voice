@@ -115,7 +115,7 @@ class ScheduleUpdateRequest(BaseModel):
 
 
 class DeviceRegisterRequest(BaseModel):
-    token: str = Field(..., min_length=8, max_length=256)
+    token: str = Field(..., min_length=8, max_length=256, pattern=r"^[0-9a-fA-F]{64}$")
     platform: str = Field(default="ios", pattern="^(ios|watchos)$")
     bundle_id: str = Field(..., min_length=1, max_length=200)
     environment: str = Field(default="sandbox", pattern="^(sandbox|production)$")

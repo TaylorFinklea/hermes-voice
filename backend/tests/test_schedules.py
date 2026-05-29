@@ -278,17 +278,17 @@ def test_devices_endpoint_roundtrip(temp_db: Path) -> None:
     client = build_client(hermes=FakeHermes(), tts=FakeTTS())
 
     r = client.post("/api/devices", json={
-        "token": "abc123def456",
+        "token": "a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4",
         "platform": "ios",
         "bundle_id": "dev.finklea.hermesvoice",
         "environment": "sandbox",
     })
     assert r.status_code == 200
-    assert r.json()["token"] == "abc123def456"
+    assert r.json()["token"] == "a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4"
 
     # Re-register same token returns 200 again (upsert).
     r = client.post("/api/devices", json={
-        "token": "abc123def456",
+        "token": "a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4",
         "platform": "ios",
         "bundle_id": "dev.finklea.hermesvoice",
         "environment": "sandbox",
@@ -296,10 +296,10 @@ def test_devices_endpoint_roundtrip(temp_db: Path) -> None:
     assert r.status_code == 200
 
     # Unregister.
-    r = client.delete("/api/devices/abc123def456")
+    r = client.delete("/api/devices/a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4")
     assert r.status_code == 204
     # Unregister again — idempotent 204.
-    r = client.delete("/api/devices/abc123def456")
+    r = client.delete("/api/devices/a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4")
     assert r.status_code == 204
 
 

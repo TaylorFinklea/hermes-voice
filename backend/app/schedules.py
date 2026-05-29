@@ -42,6 +42,14 @@ MAX_CONSECUTIVE_FAILS = 5
 # cadence, 5s precision is more than enough.
 TICK_SECONDS = 5
 
+# Schedule ids with a fire currently in flight. Guards against the executor
+# re-spawning a duplicate on the next tick while a slow Hermes turn (longer than
+# TICK_SECONDS) runs — next_fire_at isn't advanced until the turn completes, so
+# the row stays "due" until then. _fire_tasks holds strong refs so the
+# fire-and-forget tasks aren't garbage-collected (and cancelled) mid-flight.
+_in_flight: set[str] = set()
+_fire_tasks: set[asyncio.Task] = set()
+
 
 @dataclass
 class Schedule:
@@ -85,8 +93,13 @@ def _resolve_path(path: Path | None) -> Path:
 def _connect(path: Path | None = None) -> sqlite3.Connection:
     p = _resolve_path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(p, timeout=2.0)
+    conn = sqlite3.connect(p, timeout=5.0)
     conn.row_factory = sqlite3.Row
+    # WAL lets the executor's writers and the API's readers coexist without
+    # spurious "database is locked"; busy_timeout waits out brief write
+    # contention instead of erroring immediately.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -503,6 +516,8 @@ async def _fire_one(app: FastAPI, sched: Schedule) -> None:
             sched.id, e, sched.consecutive_fails + 1, MAX_CONSECUTIVE_FAILS,
         )
         await _mark_fired(sched.id, fired_at, success=False)
+    finally:
+        _in_flight.discard(sched.id)
 
 
 async def executor_loop(app: FastAPI) -> None:
@@ -518,7 +533,15 @@ async def executor_loop(app: FastAPI) -> None:
             try:
                 due = await _fetch_due(time.time())
                 for sched in due:
-                    asyncio.create_task(_fire_one(app, sched))
+                    # Skip a schedule still firing from an earlier tick: a slow
+                    # turn keeps the row "due" (next_fire_at not yet advanced)
+                    # and would otherwise be re-spawned every TICK_SECONDS.
+                    if sched.id in _in_flight:
+                        continue
+                    _in_flight.add(sched.id)
+                    task = asyncio.create_task(_fire_one(app, sched))
+                    _fire_tasks.add(task)
+                    task.add_done_callback(_fire_tasks.discard)
             except Exception as e:
                 # Don't let a DB hiccup kill the loop.
                 logger.warning("executor tick error: %s", e)

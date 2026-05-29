@@ -53,6 +53,11 @@ logger.setLevel(logging.INFO)
 # 25 MB cap on /api/audio uploads — well over any realistic short utterance.
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
+# Strong refs to fire-and-forget background tasks (TTS stream producers) so the
+# event loop doesn't garbage-collect — and thereby cancel — them mid-flight.
+# Each is discarded from the set on completion.
+_bg_tasks: set[asyncio.Task] = set()
+
 
 def create_app(
     *,
@@ -97,12 +102,17 @@ def create_app(
         try:
             yield
         finally:
-            await mdns.stop_mdns(mdns_state)
+            # Cancel the executor FIRST so a teardown error in mDNS can't orphan
+            # it; then stop mDNS inside its own guard.
             task.cancel()
             try:
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
+            try:
+                await mdns.stop_mdns(mdns_state)
+            except Exception as e:
+                logger.warning("mdns shutdown error: %s", e)
 
     app = FastAPI(
         title="Hermes Voice Backend",
@@ -451,7 +461,9 @@ def _start_stream(
             # Sentinel: tells consumers no more chunks are coming.
             await queue.put(None)
 
-    asyncio.create_task(producer())
+    t = asyncio.create_task(producer())
+    _bg_tasks.add(t)
+    t.add_done_callback(_bg_tasks.discard)
     return f"/api/audio/{audio_id}"
 
 

@@ -12,6 +12,7 @@ dependencies = [
     "httpx>=0.27",
     "python-dotenv>=1.0",
     "aioapns>=3.4",
+    "zeroconf>=0.140",
 ]
 
 [project.optional-dependencies]

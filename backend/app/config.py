@@ -43,6 +43,15 @@ class Settings:
     ssl_certfile: str = ""
     ssl_keyfile: str = ""
 
+    # Bonjour/mDNS LAN advertisement (zero-config discovery by the iOS app).
+    bonjour_enabled: bool = True
+    # Canonical host to advertise in the Bonjour TXT record (e.g. a Tailscale
+    # MagicDNS name like "scadrial.tailXXXX.ts.net"). When set, the iOS client
+    # builds its base URL from THIS host so an HTTPS Tailscale cert validates —
+    # a raw .local / LAN-IP host wouldn't. Empty → advertise the LAN IP, which
+    # is correct for a plain-HTTP backend on the LAN.
+    public_host: str = ""
+
     hermes_bin: str = "hermes"
     hermes_timeout: int = 180
     hermes_extra_args: tuple[str, ...] = field(default_factory=tuple)
@@ -80,6 +89,8 @@ def get_settings() -> Settings:
         auth_token=_env("HERMES_VOICE_TOKEN"),
         ssl_certfile=_env("HERMES_VOICE_CERT"),
         ssl_keyfile=_env("HERMES_VOICE_KEY"),
+        bonjour_enabled=_bool("HERMES_VOICE_BONJOUR", default=True),
+        public_host=_env("HERMES_VOICE_PUBLIC_HOST"),
         hermes_bin=_env("HERMES_BIN", default="hermes"),
         hermes_timeout=int(_env("HERMES_TIMEOUT_SECONDS", default="180")),
         hermes_extra_args=tuple(extra),

@@ -20,7 +20,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 
-from . import schedules
+from . import mdns, schedules
 from .audio_store import AudioStore
 from .config import Settings, get_settings
 from .hermes import HermesClient, HermesError, MockHermesClient
@@ -82,9 +82,21 @@ def create_app(
         # Start the executor loop. It owns its own asyncio.Task and is
         # cancelled on shutdown.
         task = asyncio.create_task(schedules.executor_loop(app))
+        # Advertise over Bonjour/mDNS so the iOS app can discover this backend
+        # on the LAN. Best-effort: skipped in mock/dev mode, and a no-op on a
+        # headless / no-LAN host. `scheme` matches how __main__ launches uvicorn.
+        mdns_state = None
+        if settings.bonjour_enabled and not auto_mock:
+            scheme = "https" if (settings.ssl_certfile and settings.ssl_keyfile) else "http"
+            mdns_state = await mdns.start_mdns(
+                port=settings.port,
+                scheme=scheme,
+                public_host=settings.public_host,
+            )
         try:
             yield
         finally:
+            await mdns.stop_mdns(mdns_state)
             task.cancel()
             try:
                 await task

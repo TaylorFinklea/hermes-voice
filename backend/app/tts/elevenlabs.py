@@ -9,11 +9,18 @@ audio starts playing within ~300ms instead of waiting for full synthesis.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 
 import httpx
 
 from . import TTSResult
+
+# ElevenLabs voice ids are short alphanumerics (e.g. "nPczCjzI2devNBz1zQrb").
+# Anything outside this set (slashes, dots, query/encoded chars) could rewrite
+# the request path, so a caller-supplied id is never interpolated raw — see
+# ElevenLabsTTS._resolve_voice.
+_SAFE_VOICE = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
 
 
 class ElevenLabsTTS:
@@ -53,8 +60,17 @@ class ElevenLabsTTS:
             "Content-Type": "application/json",
         }
 
+    def _resolve_voice(self, voice_id: str | None) -> str:
+        """Whitelist the caller-supplied voice id; fall back to the configured
+        default if it's missing or not a plain voice id. Prevents path/SSRF
+        injection from a value that contains slashes or other URL metacharacters.
+        """
+        if voice_id and _SAFE_VOICE.match(voice_id):
+            return voice_id
+        return self._voice
+
     async def synthesize(self, text: str, voice_id: str | None = None) -> TTSResult:
-        voice = voice_id or self._voice
+        voice = self._resolve_voice(voice_id)
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}"
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(url, headers=self._headers(), json=self._body(text))
@@ -67,7 +83,7 @@ class ElevenLabsTTS:
         Yields chunks as ElevenLabs produces them, which is roughly real-time:
         first chunk lands in ~200-400ms, subsequent chunks at speech-rate.
         """
-        voice = voice_id or self._voice
+        voice = self._resolve_voice(voice_id)
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}/stream"
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream(

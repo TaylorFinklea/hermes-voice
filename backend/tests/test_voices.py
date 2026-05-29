@@ -72,3 +72,24 @@ def test_replay_passes_voice_id_through_to_tts():
     assert audio_url
     client.get(audio_url)
     assert tts.voice_ids == ["v-other"]
+
+
+def test_text_rejects_malformed_voice_id():
+    # Path-injection guard at the API boundary: a voice_id with slashes/dots
+    # is rejected before it can reach the provider's URL builder.
+    client = build_client(tts=FakeTTS())
+    resp = client.post("/api/text", json={"text": "hi", "voice_id": "../../v1/models"})
+    assert resp.status_code == 422
+
+
+def test_elevenlabs_voice_whitelist_blocks_path_injection():
+    # Provider-level defense in depth (covers the /api/audio form path too):
+    # a non-whitelisted id falls back to the configured default voice.
+    from app.tts.elevenlabs import ElevenLabsTTS
+
+    tts = ElevenLabsTTS(api_key="k", voice_id="defaultVoice1")
+    assert tts._resolve_voice("goodVoice_1") == "goodVoice_1"
+    assert tts._resolve_voice("../../v1/models") == "defaultVoice1"
+    assert tts._resolve_voice("a/b") == "defaultVoice1"
+    assert tts._resolve_voice("") == "defaultVoice1"
+    assert tts._resolve_voice(None) == "defaultVoice1"

@@ -379,6 +379,146 @@ struct HermesVoiceAPI {
         return path
     }
 
+    // MARK: - Streaming turns (SSE)
+
+    /// One server-sent event from a streaming turn. The reply + final tool list
+    /// are authoritative (from the session export); `tool` events are the live,
+    /// best-effort feed parsed from Hermes's stdout as it works.
+    enum TurnEvent: Equatable {
+        case transcribed(String)
+        case tool(name: String, preview: String, ok: Bool)
+        case tools([ToolCall])
+        case assistant(text: String, sessionId: String)
+        case audio(path: String)
+        case done(sessionId: String)
+        case failed(String)
+    }
+
+    func streamText(
+        _ text: String, sessionId: String?, voiceId: String? = nil
+    ) -> AsyncThrowingStream<TurnEvent, Error> {
+        var payload: [String: Any] = ["text": text]
+        if let sessionId, !sessionId.isEmpty { payload["session_id"] = sessionId }
+        if let voiceId, !voiceId.isEmpty { payload["voice_id"] = voiceId }
+        return events(path: "/api/text/stream", jsonBody: payload)
+    }
+
+    func streamAudio(
+        fileURL: URL, mimeType: String, sessionId: String?, voiceId: String? = nil
+    ) -> AsyncThrowingStream<TurnEvent, Error> {
+        let boundary = "----HermesVoiceBoundary\(UUID().uuidString)"
+        var body = Data()
+        let crlf = "\r\n"
+        func appendPart(name: String, filename: String? = nil, contentType: String? = nil, data: Data) {
+            body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
+            var disposition = "Content-Disposition: form-data; name=\"\(name)\""
+            if let filename { disposition += "; filename=\"\(filename)\"" }
+            body.append("\(disposition)\(crlf)".data(using: .utf8)!)
+            if let contentType {
+                body.append("Content-Type: \(contentType)\(crlf)".data(using: .utf8)!)
+            }
+            body.append(crlf.data(using: .utf8)!)
+            body.append(data)
+            body.append(crlf.data(using: .utf8)!)
+        }
+        let audio = (try? Data(contentsOf: fileURL)) ?? Data()
+        appendPart(name: "file", filename: fileURL.lastPathComponent, contentType: mimeType, data: audio)
+        if let sessionId, !sessionId.isEmpty {
+            appendPart(name: "session_id", data: sessionId.data(using: .utf8)!)
+        }
+        if let voiceId, !voiceId.isEmpty {
+            appendPart(name: "voice_id", data: voiceId.data(using: .utf8)!)
+        }
+        body.append("--\(boundary)--\(crlf)".data(using: .utf8)!)
+        return events(path: "/api/audio/stream", multipart: (boundary, body))
+    }
+
+    private func events(
+        path: String,
+        jsonBody: [String: Any]? = nil,
+        multipart: (boundary: String, body: Data)? = nil
+    ) -> AsyncThrowingStream<TurnEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let url = try buildURL(path)
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "POST"
+                    req.timeoutInterval = 300  // a slow Hermes turn can run a while
+                    req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    if !authToken.isEmpty {
+                        req.setValue(authToken, forHTTPHeaderField: "X-Hermes-Voice-Token")
+                    }
+                    if let jsonBody {
+                        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                        req.httpBody = try JSONSerialization.data(withJSONObject: jsonBody)
+                    } else if let multipart {
+                        req.setValue(
+                            "multipart/form-data; boundary=\(multipart.boundary)",
+                            forHTTPHeaderField: "Content-Type"
+                        )
+                        req.httpBody = multipart.body
+                    }
+                    let (bytes, response) = try await session.bytes(for: req)
+                    if let http = response as? HTTPURLResponse,
+                       !(200..<300).contains(http.statusCode) {
+                        // Non-2xx before any event → the streaming endpoint is
+                        // unavailable (e.g. older backend); caller falls back.
+                        throw APIError.httpStatus(http.statusCode, "stream unavailable")
+                    }
+                    for try await line in bytes.lines {
+                        guard line.hasPrefix("data:") else { continue }
+                        let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                        guard !payload.isEmpty, let data = payload.data(using: .utf8),
+                              let ev = Self.parseEvent(data) else { continue }
+                        continuation.yield(ev)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private static func parseEvent(_ data: Data) -> TurnEvent? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = obj["type"] as? String else { return nil }
+        switch type {
+        case "transcribed":
+            return .transcribed(obj["text"] as? String ?? "")
+        case "tool":
+            return .tool(
+                name: obj["name"] as? String ?? "tool",
+                preview: obj["preview"] as? String ?? "",
+                ok: obj["ok"] as? Bool ?? true
+            )
+        case "tools":
+            let items = (obj["items"] as? [[String: Any]]) ?? []
+            return .tools(items.map {
+                ToolCall(
+                    name: $0["name"] as? String ?? "tool",
+                    preview: $0["preview"] as? String ?? "",
+                    ok: $0["ok"] as? Bool ?? true
+                )
+            })
+        case "assistant":
+            return .assistant(
+                text: obj["text"] as? String ?? "",
+                sessionId: obj["session_id"] as? String ?? ""
+            )
+        case "audio":
+            return .audio(path: obj["url"] as? String ?? "")
+        case "done":
+            return .done(sessionId: obj["session_id"] as? String ?? "")
+        case "error":
+            return .failed(obj["detail"] as? String ?? "stream error")
+        default:
+            return nil
+        }
+    }
+
     /// Build the absolute URL for a backend path. Used by AVPlayer to stream
     /// audio directly from the backend rather than downloading first.
     func makeURL(path: String) -> URL? {

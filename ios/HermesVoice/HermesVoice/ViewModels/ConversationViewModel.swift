@@ -133,33 +133,31 @@ final class ConversationViewModel: ObservableObject {
         let currentSession = sessionId
         let voiceId = settings.selectedVoiceId
         let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Bump to "processing" after a short upload window so the pipeline
+            // UI doesn't sit on "uploading" the whole time.
+            let phaseFlip = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if let self, self.state == .sending { self.sendingPhase = .processing }
+            }
+            defer { phaseFlip.cancel() }
             do {
-                // Bump to "processing" after a short upload window so the
-                // pipeline UI doesn't sit on "uploading" the entire time —
-                // for a few-second clip on Tailscale, upload is usually
-                // ~200-500ms.
-                let phaseFlip = Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    if let self, self.state == .sending {
-                        self.sendingPhase = .processing
-                    }
-                }
-                defer { phaseFlip.cancel() }
-
-                let response = try await api.sendAudio(
-                    fileURL: url, mimeType: "audio/m4a", sessionId: currentSession,
-                    voiceId: voiceId
+                try await self.consumeTurn(
+                    api.streamAudio(
+                        fileURL: url, mimeType: "audio/m4a",
+                        sessionId: currentSession, voiceId: voiceId
+                    ),
+                    appendUserFromTranscribed: true
                 )
                 VoiceRecorder.discard(url)
-                try Task.checkCancellation()
-                await self?.handle(response: response)
             } catch is CancellationError {
                 VoiceRecorder.discard(url)  // user interrupted; drop their audio
+            } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code != 0 {
+                // Streaming endpoint unavailable (older backend) → single-shot.
+                await self.sendAudioFallback(url: url, sessionId: currentSession, voiceId: voiceId)
             } catch {
                 VoiceRecorder.discard(url)
-                if !Task.isCancelled, let self {
-                    self.state = .error(error.localizedDescription)
-                }
+                if !Task.isCancelled { self.failTurn(error) }
             }
         }
         currentTurn = task
@@ -176,20 +174,113 @@ final class ConversationViewModel: ObservableObject {
         let currentSession = sessionId
         let voiceId = settings.selectedVoiceId
         let task = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
-                let response = try await api.sendText(trimmed, sessionId: currentSession, voiceId: voiceId)
-                try Task.checkCancellation()
-                await self?.handle(response: response)
+                try await self.consumeTurn(
+                    api.streamText(trimmed, sessionId: currentSession, voiceId: voiceId),
+                    appendUserFromTranscribed: false
+                )
             } catch is CancellationError {
-                // user interrupted before Hermes responded; state is now .recording
+                // user barged in; userPressedMic already moved us to recording
+            } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code != 0 {
+                await self.sendTextFallback(trimmed, sessionId: currentSession, voiceId: voiceId)
             } catch {
-                if !Task.isCancelled, let self {
-                    self.state = .error(error.localizedDescription)
-                }
+                if !Task.isCancelled { self.failTurn(error) }
             }
         }
         currentTurn = task
         await task.value
+    }
+
+    /// Consume an SSE turn stream, updating the transcript + state live.
+    /// Tool chips appear as Hermes works; the `tools` event then replaces the
+    /// live (best-effort) chips with the authoritative list, and `assistant` /
+    /// `audio` commit the reply + start progressive playback.
+    private func consumeTurn(
+        _ stream: AsyncThrowingStream<HermesVoiceAPI.TurnEvent, Error>,
+        appendUserFromTranscribed: Bool
+    ) async throws {
+        var turnToolIDs: [UUID] = []
+        for try await ev in stream {
+            try Task.checkCancellation()
+            switch ev {
+            case .transcribed(let t):
+                if appendUserFromTranscribed {
+                    messages.append(Message(role: .user, text: t))
+                }
+                // STT done; Hermes is working — move to the thinking pane so the
+                // live tool chips show (audio turns start in .sending).
+                if state == .sending { state = .thinking }
+            case .tool(let name, let preview, let ok):
+                let m = Message(
+                    role: .toolCall, text: "\(name): \(preview)",
+                    toolCall: ToolCallDetail(name: name, preview: preview, ok: ok)
+                )
+                messages.append(m)
+                turnToolIDs.append(m.id)
+            case .tools(let items):
+                // Authoritative list — swap out the live best-effort chips.
+                messages.removeAll { turnToolIDs.contains($0.id) }
+                turnToolIDs.removeAll()
+                for tc in items {
+                    let m = Message(
+                        role: .toolCall, text: "\(tc.name): \(tc.preview)",
+                        toolCall: ToolCallDetail(name: tc.name, preview: tc.preview, ok: tc.ok)
+                    )
+                    messages.append(m)
+                    turnToolIDs.append(m.id)
+                }
+            case .assistant(let txt, let sid):
+                if !sid.isEmpty { sessionId = sid }
+                messages.append(Message(role: .assistant, text: txt))
+                settings.markReachable()
+            case .audio(let path):
+                guard let audioURL = api.makeURL(path: path) else { break }
+                state = .speaking
+                await player.play(url: audioURL, authToken: settings.authToken)
+                state = .idle
+            case .done:
+                if state != .speaking { state = .idle }
+            case .failed(let detail):
+                state = .error(detail)
+                return
+            }
+        }
+        // Stream ended cleanly with no audio leg (e.g. TTS disabled).
+        if state == .thinking || state == .sending { state = .idle }
+    }
+
+    /// Single-shot fallback used when the streaming endpoint is unavailable
+    /// (e.g. an older backend that 404s on /api/*/stream).
+    private func sendTextFallback(_ text: String, sessionId: String?, voiceId: String) async {
+        do {
+            let response = try await api.sendText(text, sessionId: sessionId, voiceId: voiceId)
+            try Task.checkCancellation()
+            await handle(response: response)
+        } catch is CancellationError {
+        } catch {
+            if !Task.isCancelled { failTurn(error) }
+        }
+    }
+
+    private func sendAudioFallback(url: URL, sessionId: String?, voiceId: String) async {
+        do {
+            let response = try await api.sendAudio(
+                fileURL: url, mimeType: "audio/m4a", sessionId: sessionId, voiceId: voiceId
+            )
+            VoiceRecorder.discard(url)
+            try Task.checkCancellation()
+            await handle(response: response)
+        } catch is CancellationError {
+            VoiceRecorder.discard(url)
+        } catch {
+            VoiceRecorder.discard(url)
+            if !Task.isCancelled { failTurn(error) }
+        }
+    }
+
+    private func failTurn(_ error: Error) {
+        state = .error(error.localizedDescription)
     }
 
     func clearError() {

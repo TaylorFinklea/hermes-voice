@@ -12,8 +12,9 @@ from fastapi.testclient import TestClient
 
 from app.audio_store import AudioStore
 from app.config import reset_settings_cache
-from app.hermes import HermesClient, HermesReply
+from app.hermes import HermesClient, HermesReply, StreamReply, StreamTool
 from app.main import create_app
+from app.session_audit import ToolCallSummary
 from app.tts import TTSResult
 
 
@@ -34,6 +35,16 @@ class FakeHermes(HermesClient):
     async def ask(self, prompt: str, session_id: str | None = None) -> HermesReply:
         self.calls.append((prompt, session_id))
         return HermesReply(text=self._reply, session_id=session_id or "fake-session-1")
+
+    async def ask_streaming(self, prompt: str, session_id: str | None = None):
+        self.calls.append((prompt, session_id))
+        # One live tool preview, then the authoritative reply + tool list.
+        yield StreamTool(name="terminal", preview="ls")
+        yield StreamReply(
+            text=self._reply,
+            session_id=session_id or "fake-session-1",
+            tools=[ToolCallSummary(name="terminal", preview="ls", ok=True)],
+        )
 
 
 class FakeTTS:

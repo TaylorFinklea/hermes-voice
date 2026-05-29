@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import secrets
 from contextlib import asynccontextmanager
@@ -23,7 +24,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from . import mdns, schedules
 from .audio_store import AudioStore
 from .config import Settings, get_settings
-from .hermes import HermesClient, HermesError, MockHermesClient
+from .hermes import HermesClient, HermesError, MockHermesClient, StreamReply, StreamTool
 from .models import (
     DeviceRegisterRequest,
     DeviceResponse,
@@ -211,6 +212,41 @@ def _register_routes(app: FastAPI) -> None:
 
         return await _run_turn(
             app, user_text=user_text, session_id=session_id, voice_id=voice_id
+        )
+
+    @app.post("/api/text/stream", dependencies=[Depends(_require_token)])
+    async def text_turn_stream(body: TextRequest) -> StreamingResponse:
+        return StreamingResponse(
+            _stream_turn(
+                app, user_text=body.text, session_id=body.session_id, voice_id=body.voice_id
+            ),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+
+    @app.post("/api/audio/stream", dependencies=[Depends(_require_token)])
+    async def audio_turn_stream(
+        file: Annotated[UploadFile, File()],
+        session_id: Annotated[str | None, Form()] = None,
+        voice_id: Annotated[str | None, Form()] = None,
+    ) -> StreamingResponse:
+        stt: STTProvider | None = app.state.stt
+        if stt is None:
+            raise HTTPException(status_code=503, detail="No STT provider configured.")
+        audio_bytes = await _read_capped(file, MAX_AUDIO_BYTES)
+        try:
+            user_text = await stt.transcribe(audio_bytes, mime=file.content_type)
+        except Exception as e:
+            logger.exception("STT failure")
+            raise HTTPException(status_code=502, detail=f"transcription failed: {e}") from e
+        if not user_text:
+            raise HTTPException(status_code=422, detail="no speech detected")
+        return StreamingResponse(
+            _stream_turn(
+                app, user_text=user_text, session_id=session_id, voice_id=voice_id
+            ),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
         )
 
     @app.get(
@@ -533,6 +569,48 @@ async def _run_turn(
         audio_url=audio_url,
         tool_calls=tool_summaries,
     )
+
+
+async def _stream_turn(
+    app: FastAPI, *, user_text: str, session_id: str | None, voice_id: str | None = None
+):
+    """SSE event generator for a streaming turn.
+
+    Emits: transcribed → tool* (live, as Hermes flushes them) → tools
+    (authoritative) → assistant → audio → done, or an error event. The reply +
+    final tool list come from the session export; the live tool events are
+    display-only. Additive: the non-streaming /api/text and /api/audio remain
+    as the client's fallback.
+    """
+    hermes: HermesClient = app.state.hermes
+    tts: TTSProvider | None = app.state.tts
+
+    def sse(obj: dict) -> str:
+        return f"data: {json.dumps(obj)}\n\n"
+
+    yield sse({"type": "transcribed", "text": user_text})
+    try:
+        async for ev in hermes.ask_streaming(user_text, session_id=session_id):
+            if isinstance(ev, StreamTool):
+                yield sse({"type": "tool", "name": ev.name, "preview": ev.preview, "ok": True})
+            elif isinstance(ev, StreamReply):
+                yield sse({"type": "tools", "items": [tc.as_dict() for tc in ev.tools]})
+                yield sse({"type": "assistant", "text": ev.text, "session_id": ev.session_id})
+                audio_url: str | None = None
+                if tts is not None and ev.text:
+                    try:
+                        audio_url = _start_stream(app, tts, ev.text, voice_id=voice_id)
+                    except Exception as e:
+                        logger.warning("stream tts setup error: %s", e)
+                if audio_url:
+                    yield sse({"type": "audio", "url": audio_url})
+                yield sse({"type": "done", "session_id": ev.session_id})
+    except HermesError as e:
+        logger.warning("stream hermes error: %s", e)
+        yield sse({"type": "error", "detail": f"hermes failed: {e}"})
+    except Exception as e:
+        logger.warning("stream turn error: %s", e)
+        yield sse({"type": "error", "detail": str(e)})
 
 
 # Convenience for `uvicorn app.main:app`.

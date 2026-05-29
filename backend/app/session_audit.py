@@ -31,13 +31,8 @@ class ToolCallSummary:
         return {"name": self.name, "preview": self.preview, "ok": self.ok}
 
 
-async def fetch_tool_calls_since(
-    settings: Settings, session_id: str, since_ts: float
-) -> list[ToolCallSummary]:
-    """Return tool calls made in the session after `since_ts` (unix seconds).
-
-    Returns [] on any failure — auditing must never break a successful turn.
-    """
+async def _export_messages(settings: Settings, session_id: str) -> list[dict]:
+    """Export a session to JSON and return its `messages` list ([] on failure)."""
     if not session_id:
         return []
 
@@ -65,7 +60,43 @@ async def fetch_tool_calls_since(
     except (json.JSONDecodeError, IndexError):
         return []
 
-    return _summarize(data.get("messages", []), since_ts)
+    return data.get("messages", [])
+
+
+async def fetch_tool_calls_since(
+    settings: Settings, session_id: str, since_ts: float
+) -> list[ToolCallSummary]:
+    """Return tool calls made in the session after `since_ts` (unix seconds).
+
+    Returns [] on any failure — auditing must never break a successful turn.
+    """
+    messages = await _export_messages(settings, session_id)
+    return _summarize(messages, since_ts)
+
+
+async def fetch_turn_result(
+    settings: Settings, session_id: str, since_ts: float
+) -> tuple[str, list[ToolCallSummary]]:
+    """Export once; return (assistant reply text, tool summaries) for this turn.
+
+    The streaming turn path takes the reply from the session export (structured
+    and clean) instead of parsing the CLI's boxed non-quiet stdout.
+    """
+    messages = await _export_messages(settings, session_id)
+    return _latest_assistant_text(messages, since_ts), _summarize(messages, since_ts)
+
+
+def _latest_assistant_text(messages: list[dict], since_ts: float) -> str:
+    """The last non-empty assistant message content at/after `since_ts`."""
+    text = ""
+    for msg in messages:
+        if float(msg.get("timestamp") or 0) < since_ts:
+            continue
+        if msg.get("role") == "assistant":
+            content = msg.get("content")
+            if isinstance(content, str) and content.strip():
+                text = content.strip()
+    return text
 
 
 def _summarize(messages: list[dict], since_ts: float) -> list[ToolCallSummary]:

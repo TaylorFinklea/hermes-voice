@@ -16,11 +16,17 @@ from __future__ import annotations
 import asyncio
 import re
 import shutil
+import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from .config import Settings
 
 _SESSION_RE = re.compile(r"^session_id:\s*(\S+)\s*$", re.MULTILINE)
+# Non-quiet tool-preview line, e.g. "  ┊ 🐍 exec   import os  3.4s". Used ONLY
+# for the live display feed — the authoritative tool list comes from the export.
+_TOOL_LINE = re.compile(r"┊\s+\S+\s+(?P<name>\S+)\s+(?P<preview>.*?)\s*(?:\d+(?:\.\d+)?s)?\s*$")
+_RESUME_LINE = re.compile(r"--resume\s+(\S+)")
 
 
 class HermesError(RuntimeError):
@@ -71,6 +77,21 @@ _VOICE_PRELUDE = (
 class HermesReply:
     text: str
     session_id: str
+
+
+@dataclass(frozen=True)
+class StreamTool:
+    """A tool preview parsed live from non-quiet stdout (display-only)."""
+    name: str
+    preview: str
+
+
+@dataclass(frozen=True)
+class StreamReply:
+    """Final, authoritative turn result, sourced from the session export."""
+    text: str
+    session_id: str
+    tools: list  # list[ToolCallSummary] from session_audit
 
 
 class HermesClient:
@@ -137,6 +158,69 @@ class HermesClient:
 
         return self._parse(stdout, stderr)
 
+    async def ask_streaming(
+        self, prompt: str, session_id: str | None = None
+    ) -> AsyncIterator[StreamTool | StreamReply]:
+        """Run a turn NON-quiet, yielding StreamTool events live as Hermes
+        flushes tool previews to stdout, then a final StreamReply whose text +
+        tools come from the structured session export (not the boxed stdout).
+        """
+        if not prompt.strip():
+            raise HermesError("empty prompt")
+        # Small skew so the export's timestamp filter doesn't miss this turn's
+        # first tool call (mirrors _run_turn).
+        since_ts = time.time() - 0.5
+
+        shaped = prompt
+        if _VOICE_PRELUDE and not session_id:
+            shaped = f"{_VOICE_PRELUDE}\n\n{prompt}"
+
+        # No -Q: we WANT tool previews on stdout so we can stream them live.
+        args = [self._settings.hermes_bin, "chat", "-q", shaped]
+        args.extend(self._settings.hermes_extra_args)
+        if session_id:
+            args.extend(["--resume", session_id])
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+        except FileNotFoundError as e:
+            raise HermesError(f"hermes binary not found: {self._settings.hermes_bin}") from e
+
+        captured = session_id or ""
+        stdout = proc.stdout
+        assert stdout is not None
+        try:
+            async with asyncio.timeout(self._settings.hermes_timeout):
+                async for raw in stdout:
+                    line = raw.decode("utf-8", errors="replace")
+                    m = _TOOL_LINE.search(line)
+                    if m:
+                        yield StreamTool(
+                            name=m.group("name"), preview=m.group("preview").strip()
+                        )
+                    r = _RESUME_LINE.search(line)
+                    if r:
+                        captured = r.group(1)
+        except TimeoutError as e:
+            proc.kill()
+            await proc.wait()
+            raise HermesError(
+                f"hermes timed out after {self._settings.hermes_timeout}s"
+            ) from e
+        await proc.wait()
+
+        # Authoritative reply + tool list from the structured export.
+        from .session_audit import fetch_turn_result
+        text, tools = await fetch_turn_result(self._settings, captured, since_ts)
+        if not text:
+            raise HermesError("hermes returned no assistant text")
+        yield StreamReply(text=text, session_id=captured, tools=tools)
+
     @staticmethod
     def _parse(stdout: str, stderr: str) -> HermesReply:
         # On --resume, hermes prints a "↻ Resumed session ..." notice to stdout
@@ -171,3 +255,12 @@ class MockHermesClient(HermesClient):
         self._counter += 1
         sid = session_id or f"mock-{self._counter:06d}"
         return HermesReply(text=f"{self._reply} (you said: {prompt!r})", session_id=sid)
+
+    async def ask_streaming(
+        self, prompt: str, session_id: str | None = None
+    ) -> AsyncIterator[StreamTool | StreamReply]:
+        self._counter += 1
+        sid = session_id or f"mock-{self._counter:06d}"
+        yield StreamReply(
+            text=f"{self._reply} (you said: {prompt!r})", session_id=sid, tools=[]
+        )

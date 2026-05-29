@@ -14,6 +14,9 @@ struct SettingsView: View {
     @State private var healthResult: String = ""
     @State private var pinging = false
     @State private var showSchedules = false
+    @State private var voices: [HermesVoiceAPI.VoiceOption] = []
+    @State private var voicesLoading = false
+    @State private var voicesError = ""
 
     var body: some View {
         NavigationStack {
@@ -24,6 +27,7 @@ struct SettingsView: View {
                     backendSection
                     schedulesSection
                     notificationsSection
+                    voiceSection
                     modeSection
                     watchSection
                     diagnosticsSection
@@ -59,6 +63,7 @@ struct SettingsView: View {
                     hydrated = true
                 }
             }
+            .task { await loadVoices() }
         }
         .tint(HVColor.amber)
         .preferredColorScheme(.dark)
@@ -149,6 +154,52 @@ struct SettingsView: View {
             Text("Pushes arrive when a schedule fires. \"Auto-play\" replaces the banner with chime + speaker playback while the app is open. Foreground chime can be disabled if you find it noisy.")
                 .font(HVFont.captionTiny)
                 .foregroundStyle(HVColor.creamDim)
+        }
+    }
+
+    private var voiceSection: some View {
+        Section {
+            Picker("Voice", selection: $settings.selectedVoiceId) {
+                Text("Default").tag("")
+                ForEach(voices) { v in
+                    Text(v.name).tag(v.voiceId)
+                }
+            }
+            .pickerStyle(.navigationLink)
+            .tint(HVColor.amber)
+            .listRowBackground(HVColor.creamSurface)
+            if voicesLoading {
+                HStack(spacing: 8) {
+                    ProgressView().tint(HVColor.amber)
+                    Text("Loading voices…")
+                        .font(HVFont.captionTiny)
+                        .foregroundStyle(HVColor.creamDim)
+                }
+                .listRowBackground(HVColor.creamSurface)
+            } else if !voicesError.isEmpty {
+                Text(voicesError)
+                    .font(HVFont.captionTiny)
+                    .foregroundStyle(HVColor.creamDim)
+                    .listRowBackground(HVColor.creamSurface)
+            }
+        } header: {
+            sectionHeader("VOICE")
+        } footer: {
+            Text("ElevenLabs voices from your backend. \"Default\" uses the server's configured voice.")
+                .font(HVFont.captionTiny)
+                .foregroundStyle(HVColor.creamDim)
+        }
+    }
+
+    private func loadVoices() async {
+        voicesLoading = true
+        defer { voicesLoading = false }
+        let api = HermesVoiceAPI(baseURL: settings.backendURL, authToken: settings.authToken)
+        do {
+            voices = try await api.listVoices()
+            voicesError = ""
+        } catch {
+            voicesError = "Couldn't load voices (is the backend reachable?)."
         }
     }
 

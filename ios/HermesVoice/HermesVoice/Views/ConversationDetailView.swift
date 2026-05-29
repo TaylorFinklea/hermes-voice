@@ -107,7 +107,7 @@ struct ConversationDetailView: View {
         defer { replayingMessageId = nil }
         let api = HermesVoiceAPI(baseURL: settings.backendURL, authToken: settings.authToken)
         do {
-            let path = try await api.replayAudio(text: message.text)
+            let path = try await api.replayAudio(text: message.text, voiceId: settings.selectedVoiceId)
             guard let url = api.makeURL(path: path) else { return }
             await player.play(url: url, authToken: settings.authToken)
         } catch {

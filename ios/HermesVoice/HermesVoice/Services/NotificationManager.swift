@@ -187,7 +187,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // the reply text fresh (push body is text, not the original audio).
         let api = HermesVoiceAPI(baseURL: settings.backendURL, authToken: settings.authToken)
         do {
-            let path = try await api.replayAudio(text: arrival.body)
+            let path = try await api.replayAudio(text: arrival.body, voiceId: settings.selectedVoiceId)
             guard let url = api.makeURL(path: path) else { return }
             await AudioPlayer().play(url: url, authToken: settings.authToken)
         } catch {

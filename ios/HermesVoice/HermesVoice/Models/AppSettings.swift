@@ -81,6 +81,14 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: Keys.hasCompletedOnboarding) }
     }
 
+    // ───── Voice ─────
+
+    /// Selected ElevenLabs voice id. Empty → use the backend's configured
+    /// default voice. Sent with each turn/replay request.
+    @Published var selectedVoiceId: String {
+        didSet { UserDefaults.standard.set(selectedVoiceId, forKey: Keys.selectedVoiceId) }
+    }
+
     init() {
         let d = UserDefaults.standard
         self.backendURL = d.string(forKey: Keys.backendURL) ?? "http://127.0.0.1:8765"
@@ -97,8 +105,13 @@ final class AppSettings: ObservableObject {
         self.foregroundChimeEnabled = d.object(forKey: Keys.foregroundChimeEnabled)
             as? Bool ?? true
         self.lastApnsToken = d.string(forKey: Keys.lastApnsToken) ?? ""
-        // Defaults false on a fresh install → onboarding shows on first launch.
-        self.hasCompletedOnboarding = d.bool(forKey: Keys.hasCompletedOnboarding)
+        self.selectedVoiceId = d.string(forKey: Keys.selectedVoiceId) ?? ""
+        // Onboarding shows on a fresh install (default URL + flag unset). Treat
+        // an already-configured non-default backend as onboarded so upgraders
+        // aren't bounced back through onboarding.
+        let savedURL = d.string(forKey: Keys.backendURL) ?? "http://127.0.0.1:8765"
+        let configured = savedURL != "http://127.0.0.1:8765" && !savedURL.isEmpty
+        self.hasCompletedOnboarding = d.bool(forKey: Keys.hasCompletedOnboarding) || configured
     }
 
     private enum Keys {
@@ -112,5 +125,6 @@ final class AppSettings: ObservableObject {
         static let foregroundChimeEnabled = "hv.foregroundChimeEnabled"
         static let lastApnsToken = "hv.lastApnsToken"
         static let hasCompletedOnboarding = "hv.hasCompletedOnboarding"
+        static let selectedVoiceId = "hv.selectedVoiceId"
     }
 }

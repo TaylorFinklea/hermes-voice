@@ -124,6 +124,7 @@ final class ConversationViewModel: ObservableObject {
 
         let api = self.api
         let currentSession = sessionId
+        let voiceId = settings.selectedVoiceId
         let task = Task { @MainActor [weak self] in
             do {
                 // Bump to "processing" after a short upload window so the
@@ -139,7 +140,8 @@ final class ConversationViewModel: ObservableObject {
                 defer { phaseFlip.cancel() }
 
                 let response = try await api.sendAudio(
-                    fileURL: url, mimeType: "audio/m4a", sessionId: currentSession
+                    fileURL: url, mimeType: "audio/m4a", sessionId: currentSession,
+                    voiceId: voiceId
                 )
                 VoiceRecorder.discard(url)
                 try Task.checkCancellation()
@@ -165,9 +167,10 @@ final class ConversationViewModel: ObservableObject {
 
         let api = self.api
         let currentSession = sessionId
+        let voiceId = settings.selectedVoiceId
         let task = Task { @MainActor [weak self] in
             do {
-                let response = try await api.sendText(trimmed, sessionId: currentSession)
+                let response = try await api.sendText(trimmed, sessionId: currentSession, voiceId: voiceId)
                 try Task.checkCancellation()
                 await self?.handle(response: response)
             } catch is CancellationError {

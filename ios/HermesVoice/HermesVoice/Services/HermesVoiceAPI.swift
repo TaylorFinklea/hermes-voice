@@ -64,20 +64,21 @@ struct HermesVoiceAPI {
         return json
     }
 
-    func sendText(_ text: String, sessionId: String?) async throws -> TurnResponse {
+    func sendText(_ text: String, sessionId: String?, voiceId: String? = nil) async throws -> TurnResponse {
         let url = try buildURL("/api/text")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var payload: [String: Any] = ["text": text]
         if let sessionId, !sessionId.isEmpty { payload["session_id"] = sessionId }
+        if let voiceId, !voiceId.isEmpty { payload["voice_id"] = voiceId }
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, response) = try await perform(req)
         try Self.ensureOK(response, data: data)
         return try Self.decoder.decode(TurnResponse.self, from: data)
     }
 
-    func sendAudio(fileURL: URL, mimeType: String, sessionId: String?) async throws -> TurnResponse {
+    func sendAudio(fileURL: URL, mimeType: String, sessionId: String?, voiceId: String? = nil) async throws -> TurnResponse {
         let url = try buildURL("/api/audio")
         let boundary = "----HermesVoiceBoundary\(UUID().uuidString)"
         var req = URLRequest(url: url)
@@ -109,6 +110,9 @@ struct HermesVoiceAPI {
         )
         if let sessionId, !sessionId.isEmpty {
             appendPart(name: "session_id", data: sessionId.data(using: .utf8)!)
+        }
+        if let voiceId, !voiceId.isEmpty {
+            appendPart(name: "voice_id", data: voiceId.data(using: .utf8)!)
         }
         body.append("--\(boundary)--\(crlf)".data(using: .utf8)!)
 
@@ -358,12 +362,14 @@ struct HermesVoiceAPI {
         try Self.ensureOK(response, data: data)
     }
 
-    func replayAudio(text: String) async throws -> String {
+    func replayAudio(text: String, voiceId: String? = nil) async throws -> String {
         let url = try buildURL("/api/replay")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["text": text])
+        var payload: [String: Any] = ["text": text]
+        if let voiceId, !voiceId.isEmpty { payload["voice_id"] = voiceId }
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, response) = try await perform(req)
         try Self.ensureOK(response, data: data)
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -389,6 +395,32 @@ struct HermesVoiceAPI {
             .appendingPathComponent("hv-\(UUID().uuidString).\(ext.isEmpty ? "mp3" : ext)")
         try data.write(to: dest)
         return dest
+    }
+
+    // MARK: - Voices
+
+    struct VoiceOption: Decodable, Identifiable, Equatable {
+        var id: String { voiceId }
+        let voiceId: String
+        let name: String
+        let category: String?
+
+        enum CodingKeys: String, CodingKey {
+            case voiceId = "voice_id"
+            case name
+            case category
+        }
+    }
+
+    func listVoices() async throws -> [VoiceOption] {
+        let url = try buildURL("/api/voices")
+        let (data, response) = try await perform(URLRequest(url: url))
+        try Self.ensureOK(response, data: data)
+        do {
+            return try Self.decoder.decode([VoiceOption].self, from: data)
+        } catch {
+            throw APIError.decode(error)
+        }
     }
 
     // MARK: - Internals

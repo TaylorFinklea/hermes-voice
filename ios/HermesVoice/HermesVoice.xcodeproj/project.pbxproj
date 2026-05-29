@@ -35,6 +35,7 @@
 		8DFF9B2D9AF9974BAC9E1495 /* ActionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C333A49C789676D5541D80BA /* ActionCard.swift */; };
 		A52398B744D8E740D17644A7 /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F301EE0D51AE7E6149CB6028 /* AudioPlayer.swift */; };
 		B14807A172CDC8E0AFAF07F5 /* HermesActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53A4809563E9438638E7D768 /* HermesActivityAttributes.swift */; };
+		B1E6B7D652D5A5ACBCC744CD /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C4276ABED593A1B47F0F329 /* OnboardingView.swift */; };
 		BBFC4A972669401D499D95D8 /* HermesVoiceLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B91CA01336A6D528F12A4D2F /* HermesVoiceLiveActivity.swift */; };
 		C162BAFCDD77E8588F5CC0E3 /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F53A66609042992504ECC8 /* Brand.swift */; };
 		C3B835239AD589D5462B1727 /* ChimePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB3B7188CD4A6892599F80E /* ChimePlayer.swift */; };
@@ -47,6 +48,7 @@
 		DDD1F11B34F9B3926A630505 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 98913E2AE1777903CEF0FDAF /* Assets.xcassets */; };
 		E55CFF716A03D5F3DE97E2F4 /* HermesVoiceWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4912C5CDAC7F3FE3421877C9 /* HermesVoiceWatchApp.swift */; };
 		F50BAB6AC1120116517B568B /* HermesVoiceWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = F4E7E039FC5FC213E5C95D08 /* HermesVoiceWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FA56CD4C25935FB38735B2AB /* BackendBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B9A5FC3DB9A7AB2383F5ED /* BackendBrowser.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -105,6 +107,7 @@
 		478500CC3B0CD00639F5C2AA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		4912C5CDAC7F3FE3421877C9 /* HermesVoiceWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesVoiceWatchApp.swift; sourceTree = "<group>"; };
 		53A4809563E9438638E7D768 /* HermesActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesActivityAttributes.swift; sourceTree = "<group>"; };
+		58B9A5FC3DB9A7AB2383F5ED /* BackendBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendBrowser.swift; sourceTree = "<group>"; };
 		71159F3B5BD1FDDED47FF2ED /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		76D461D25CE61518A627C832 /* HermesVoice.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesVoice.entitlements; sourceTree = "<group>"; };
 		7F48F66BDE7FEFB5F8D93B14 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -115,6 +118,7 @@
 		95073D71B1247389D55E2E90 /* ConversationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationViewModel.swift; sourceTree = "<group>"; };
 		98056B3047C8E9486B041995 /* WatchPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlayer.swift; sourceTree = "<group>"; };
 		98913E2AE1777903CEF0FDAF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9C4276ABED593A1B47F0F329 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		9E5656D26B4AA84AEC2D2C91 /* VoiceRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecorder.swift; sourceTree = "<group>"; };
 		9FB3B7188CD4A6892599F80E /* ChimePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChimePlayer.swift; sourceTree = "<group>"; };
 		A2F53A66609042992504ECC8 /* Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brand.swift; sourceTree = "<group>"; };
@@ -165,6 +169,7 @@
 				39DAE544DA4A015F4204876E /* ConversationDetailView.swift */,
 				2F5107EB40D7F7FFED269FED /* HistoryView.swift */,
 				BD3A44595552D66831328B5A /* MainView.swift */,
+				9C4276ABED593A1B47F0F329 /* OnboardingView.swift */,
 				17D27F3D268D95B51D59B300 /* PushToTalkButton.swift */,
 				3FD0611B5E35BB66D8E090EE /* SchedulesView.swift */,
 				F1BB36C624F8D38FFA22276A /* SettingsView.swift */,
@@ -289,6 +294,7 @@
 			children = (
 				91BFA86135F9155F4B15C6ED /* AppDelegate.swift */,
 				F301EE0D51AE7E6149CB6028 /* AudioPlayer.swift */,
+				58B9A5FC3DB9A7AB2383F5ED /* BackendBrowser.swift */,
 				9FB3B7188CD4A6892599F80E /* ChimePlayer.swift */,
 				8E038B022A79A275C21BB70B /* HermesVoiceAPI.swift */,
 				F10E963463B97606F132C982 /* LiveActivityController.swift */,
@@ -442,6 +448,7 @@
 				86507E87E889CD0251483AC3 /* AskHermesIntent.swift in Sources */,
 				8B1D926D5BAB433FB8A570D1 /* Atoms.swift in Sources */,
 				A52398B744D8E740D17644A7 /* AudioPlayer.swift in Sources */,
+				FA56CD4C25935FB38735B2AB /* BackendBrowser.swift in Sources */,
 				C162BAFCDD77E8588F5CC0E3 /* Brand.swift in Sources */,
 				C3B835239AD589D5462B1727 /* ChimePlayer.swift in Sources */,
 				6D7510453A27D2B636F7ED1E /* ConversationDetailView.swift in Sources */,
@@ -455,6 +462,7 @@
 				0AA8C39365DB851D04C7582E /* MainView.swift in Sources */,
 				3D3CEBD0C0B5596F50E6E865 /* Message.swift in Sources */,
 				0C61B425F45DCF8A09D475DC /* NotificationManager.swift in Sources */,
+				B1E6B7D652D5A5ACBCC744CD /* OnboardingView.swift in Sources */,
 				C4B6565A4C4D590A22DF9BE8 /* PhoneWatchBridge.swift in Sources */,
 				50AB90E3B58BF04A1B5B9D99 /* PushToTalkButton.swift in Sources */,
 				8A22DCC4A0C9B7114A1D91C7 /* SchedulesView.swift in Sources */,

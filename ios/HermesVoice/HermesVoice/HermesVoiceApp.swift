@@ -25,9 +25,14 @@ struct HermesVoiceApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MainView()
-                .environmentObject(settings)
-                .environmentObject(conversation)
+            if settings.hasCompletedOnboarding {
+                MainView()
+                    .environmentObject(settings)
+                    .environmentObject(conversation)
+            } else {
+                OnboardingView()
+                    .environmentObject(settings)
+            }
         }
     }
 }

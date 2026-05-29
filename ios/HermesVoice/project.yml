@@ -64,6 +64,11 @@ targets:
         NSLocalNetworkUsageDescription: >-
           Hermes Voice connects to your self-hosted backend over your local
           network or Tailscale to talk to Hermes Agent.
+        # Required (iOS 14+) to browse for the backend via Bonjour. Without
+        # this exact service type declared, NWBrowser/NetService silently
+        # return zero results — even with local-network permission granted.
+        NSBonjourServices:
+          - _hermes-voice._tcp
         # Personal app talking to a self-hosted backend over LAN/Tailscale —
         # both are plain HTTP. Apple's NSAllowsLocalNetworking flag does NOT
         # cover Tailscale's 100.64.0.0/10 CGNAT range, so we open ATS fully.

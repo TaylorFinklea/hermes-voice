@@ -9,7 +9,8 @@ struct HermesVoiceApp: App {
     init() {
         let settings = AppSettings()
         _settings = StateObject(wrappedValue: settings)
-        _conversation = StateObject(wrappedValue: ConversationViewModel(settings: settings))
+        let conversation = ConversationViewModel(settings: settings)
+        _conversation = StateObject(wrappedValue: conversation)
         // Activate the WatchConnectivity bridge at app startup so audio
         // transfers from a paired Watch are handled even before any view
         // holds a reference. Singleton — safe to call repeatedly.
@@ -18,6 +19,7 @@ struct HermesVoiceApp: App {
         // user toggles it in Settings; this just hands the settings ref
         // to the manager and (if previously authorized) primes registration.
         NotificationManager.shared.configure(settings: settings)
+        NotificationManager.shared.attach(conversation: conversation)
         if settings.notificationsEnabled {
             NotificationManager.shared.registerForRemoteNotifications()
         }

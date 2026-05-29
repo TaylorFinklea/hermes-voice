@@ -5,6 +5,10 @@ import AVFoundation
 /// Synchronous-feeling API for the caller: `await play()` returns when the
 /// chime is done. Used before auto-playing a scheduled-fire reply so audio
 /// doesn't start mid-conversation without warning.
+///
+/// `@MainActor` so its session acquire/release go through the (also
+/// `@MainActor`) `AudioSessionCoordinator` as plain synchronous calls.
+@MainActor
 final class ChimePlayer {
     static let shared = ChimePlayer()
 
@@ -21,10 +25,10 @@ final class ChimePlayer {
             return
         }
 
-        // Activate playback. Don't switch to playAndRecord — that interferes
-        // with any active recording on the conversation flow.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
-        try? AVAudioSession.sharedInstance().setActive(true, options: [])
+        // Route through the shared coordinator (playback) so the chime never
+        // fights the conversation player over the session; release when done.
+        AudioSessionCoordinator.shared.acquire(.playback)
+        defer { AudioSessionCoordinator.shared.release() }
 
         do {
             let p = try AVAudioPlayer(contentsOf: url)

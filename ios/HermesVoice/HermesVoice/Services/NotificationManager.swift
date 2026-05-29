@@ -14,7 +14,13 @@ final class NotificationManager: NSObject, ObservableObject {
     static let shared = NotificationManager()
 
     private weak var settings: AppSettings?
+    private weak var conversation: ConversationViewModel?
     private var registrationInFlight = false
+    // A single owned player + guard for foreground scheduled-fire auto-play, so
+    // we don't spawn a throwaway AVPlayer per arrival that fights the
+    // conversation's player over the shared audio session.
+    private var arrivalPlayer: AudioPlayer?
+    private var arrivalInFlight = false
 
     /// Most-recently-received scheduled-fire notification, if any. The hero
     /// pane reads this to render a small badge / route to the right session.
@@ -37,6 +43,12 @@ final class NotificationManager: NSObject, ObservableObject {
     /// so we can read backend URL / auth token + which features are on.
     func configure(settings: AppSettings) {
         self.settings = settings
+    }
+
+    /// Wire the conversation VM so foreground auto-play can defer to a live
+    /// turn (don't fight an in-progress recording/playback).
+    func attach(conversation: ConversationViewModel) {
+        self.conversation = conversation
     }
 
     /// Clear the pending scheduled-arrival badge (after the user taps it to
@@ -128,7 +140,11 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         let arrival = parseArrival(from: notification, wasForeground: true)
         if let arrival {
             lastScheduledArrival = arrival
-            if settings?.autoPlayScheduledFires ?? true {
+            // Only auto-play when the user isn't mid-conversation (don't fight
+            // the live turn's player/session) and no other arrival is playing;
+            // otherwise fall through to the banner.
+            let idle = (conversation?.state ?? .idle) == .idle
+            if (settings?.autoPlayScheduledFires ?? true) && idle && !arrivalInFlight {
                 Task { await handleForegroundArrival(arrival) }
                 // Suppress the system banner — we play the chime + audio
                 // through our in-app path instead.
@@ -136,7 +152,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                 return
             }
         }
-        // Non-schedule notifications or auto-play disabled: show the banner.
+        // Non-schedule notifications, auto-play disabled, or busy: show the banner.
         completionHandler([.banner, .sound, .list])
     }
 
@@ -171,17 +187,28 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     }
 
     private func handleForegroundArrival(_ arrival: ScheduledArrival) async {
-        // Play the chime (if enabled), then re-synthesize TTS for the reply
-        // text and play it through the same AudioPlayer the conversation uses.
+        // Play the chime (if enabled), then re-synthesize TTS for the reply and
+        // play it. Gated to idle in willPresent, so we own the audio session +
+        // Live Activity here without fighting the conversation player.
         guard let settings else { return }
-        if settings.foregroundChimeEnabled {
-            await ChimePlayer.shared.play()
-        }
+        arrivalInFlight = true
+        // Hold the session across chime → reply so they don't churn it between
+        // them; the leaf players nest their own (ref-counted) holds.
+        AudioSessionCoordinator.shared.acquire(.playback)
         // Surface the reply on the lock screen / Dynamic Island for the
         // duration of playback — this is exactly when the phone is likely
         // locked or pocketed.
         LiveActivityController.shared.showSpeaking(detail: arrival.body)
-        defer { LiveActivityController.shared.finish() }
+        defer {
+            LiveActivityController.shared.finish()
+            AudioSessionCoordinator.shared.release()
+            arrivalPlayer = nil
+            arrivalInFlight = false
+        }
+
+        if settings.foregroundChimeEnabled {
+            await ChimePlayer.shared.play()
+        }
 
         // Replay via the existing /api/replay endpoint — this re-synthesizes
         // the reply text fresh (push body is text, not the original audio).
@@ -189,7 +216,9 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         do {
             let path = try await api.replayAudio(text: arrival.body, voiceId: settings.selectedVoiceId)
             guard let url = api.makeURL(path: path) else { return }
-            await AudioPlayer().play(url: url, authToken: settings.authToken)
+            let player = AudioPlayer()
+            arrivalPlayer = player
+            await player.play(url: url, authToken: settings.authToken)
         } catch {
             print("scheduled-fire auto-play failed: \(error)")
         }

@@ -13,20 +13,16 @@ final class AudioPlayer: NSObject {
     private var endObserver: NSObjectProtocol?
     private var statusObserver: NSKeyValueObservation?
     private var continuation: CheckedContinuation<Void, Never>?
+    private var holdsSession = false
 
     /// Plays the given URL until completion or stop().
     /// Returns when playback ends (naturally or via stop()).
     func play(url: URL, authToken: String) async {
-        stop()
-
-        do {
-            try AVAudioSession.sharedInstance().setCategory(
-                .playback, mode: .spokenAudio, options: [.duckOthers]
-            )
-            try AVAudioSession.sharedInstance().setActive(true, options: [])
-        } catch {
-            return
-        }
+        teardown()  // clean up any prior playback (idempotent)
+        // The coordinator owns category + activation; we hold one session
+        // reference for the duration of this playback and release it in teardown.
+        AudioSessionCoordinator.shared.acquire(.playback)
+        holdsSession = true
 
         // Auth token rides as an HTTP header so the backend's token gate
         // applies to streaming audio fetches too.
@@ -49,14 +45,14 @@ final class AudioPlayer: NSObject {
                 object: item,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor in self?.finish() }
+                Task { @MainActor in self?.teardown() }
             }
 
             // Also watch for failures — playback errors should release the
             // continuation, not hang the UI in 'speaking' state forever.
             statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
                 if item.status == .failed {
-                    Task { @MainActor in self?.finish() }
+                    Task { @MainActor in self?.teardown() }
                 }
             }
 
@@ -64,7 +60,13 @@ final class AudioPlayer: NSObject {
         }
     }
 
-    func stop() {
+    /// Stop playback and release the audio session. Idempotent — safe to call
+    /// when nothing is playing. This is the single completion path: it runs on
+    /// natural end / failure (via the observers) AND on an explicit stop(), so
+    /// the session is always released and observers never leak.
+    func stop() { teardown() }
+
+    private func teardown() {
         player?.pause()
         player = nil
         if let obs = endObserver {
@@ -73,13 +75,10 @@ final class AudioPlayer: NSObject {
         }
         statusObserver?.invalidate()
         statusObserver = nil
-        finish()
-        try? AVAudioSession.sharedInstance().setActive(
-            false, options: [.notifyOthersOnDeactivation]
-        )
-    }
-
-    private func finish() {
+        if holdsSession {
+            holdsSession = false
+            AudioSessionCoordinator.shared.release()
+        }
         if let cont = continuation {
             continuation = nil
             cont.resume()

@@ -2,6 +2,10 @@ import AVFoundation
 
 /// Records microphone audio to an m4a (AAC) file. AAC was chosen over WAV/PCM
 /// to keep upload sizes small — the OpenAI/Groq Whisper APIs accept it directly.
+///
+/// `@MainActor` so its session acquire/release go through `AudioSessionCoordinator`
+/// (also `@MainActor`) as plain synchronous calls.
+@MainActor
 final class VoiceRecorder: NSObject, AVAudioRecorderDelegate {
     enum RecorderError: LocalizedError {
         case permissionDenied
@@ -45,14 +49,9 @@ final class VoiceRecorder: NSObject, AVAudioRecorderDelegate {
         let granted = await requestPermission()
         guard granted else { throw RecorderError.permissionDenied }
 
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.playAndRecord, mode: .spokenAudio,
-                                    options: [.defaultToSpeaker, .allowBluetooth])
-            try session.setActive(true, options: [])
-        } catch {
-            throw RecorderError.sessionFailure(error)
-        }
+        // The coordinator owns category + activation so a barge-in or a
+        // scheduled-fire player can't deactivate the session mid-record.
+        AudioSessionCoordinator.shared.acquire(.record)
 
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("hv-rec-\(UUID().uuidString).m4a")
@@ -73,6 +72,8 @@ final class VoiceRecorder: NSObject, AVAudioRecorderDelegate {
             self.recorder = recorder
             self.startedAt = Date()
         } catch {
+            // Balance the acquire above before bailing.
+            AudioSessionCoordinator.shared.release()
             throw RecorderError.startFailure(error)
         }
     }
@@ -87,7 +88,7 @@ final class VoiceRecorder: NSObject, AVAudioRecorderDelegate {
         }
         self.recorder = nil
         self.startedAt = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        AudioSessionCoordinator.shared.release()
         return url
     }
 

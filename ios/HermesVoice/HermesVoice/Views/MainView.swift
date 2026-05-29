@@ -4,11 +4,17 @@ struct MainView: View {
     @EnvironmentObject var conversation: ConversationViewModel
     @EnvironmentObject var settings: AppSettings
     @StateObject private var notifications = NotificationManager.shared
-    @State private var showSettings = false
-    @State private var showHistory = false
-    @State private var showTranscript = false
+    @State private var activeSheet: ActiveSheet?
     @State private var textInput = ""
     @State private var typingMode = false
+
+    // One sheet at a time. Multiple `.sheet(isPresented:)` modifiers stacked on
+    // a single view shadow each other (History stopped opening once the
+    // transcript sheet was added) — so route them all through one `.sheet(item:)`.
+    private enum ActiveSheet: String, Identifiable {
+        case settings, history, transcript
+        var id: String { rawValue }
+    }
 
     var body: some View {
         NavigationStack {
@@ -28,7 +34,7 @@ struct MainView: View {
 
                     ScrollbackRail(
                         items: scrollbackTurns,
-                        onTapTurn: { showTranscript = true }
+                        onTapTurn: { activeSheet = .transcript }
                     )
 
                     ScrollView {
@@ -59,13 +65,22 @@ struct MainView: View {
             .toolbarBackground(HVColor.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .sheet(isPresented: $showSettings) { SettingsView() }
-            .sheet(isPresented: $showHistory) { HistoryView() }
-            .sheet(isPresented: $showTranscript) {
-                // Explicit env-object injection across the sheet boundary —
-                // implicit propagation is the documented Release-only crash
-                // class (see decisions.md / commit 6b91d4e).
-                TranscriptView().environmentObject(conversation)
+            .sheet(item: $activeSheet) { sheet in
+                // Single presenter. Inject env objects explicitly across the
+                // sheet boundary (the documented Release-only crash class).
+                switch sheet {
+                case .settings:
+                    SettingsView()
+                        .environmentObject(settings)
+                        .environmentObject(conversation)
+                case .history:
+                    HistoryView()
+                        .environmentObject(settings)
+                        .environmentObject(conversation)
+                case .transcript:
+                    TranscriptView()
+                        .environmentObject(conversation)
+                }
             }
         }
         .tint(HVColor.amber)
@@ -81,14 +96,14 @@ struct MainView: View {
                 .foregroundStyle(HVColor.amber)
         }
         ToolbarItem(placement: .topBarLeading) {
-            Button { showHistory = true } label: {
+            Button { activeSheet = .history } label: {
                 Image(systemName: "clock")
                     .foregroundStyle(HVColor.bronze)
             }
             .accessibilityLabel("History")
         }
         ToolbarItem(placement: .topBarTrailing) {
-            Button { showSettings = true } label: {
+            Button { activeSheet = .settings } label: {
                 Image(systemName: "gearshape")
                     .foregroundStyle(HVColor.bronze)
             }

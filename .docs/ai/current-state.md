@@ -18,7 +18,8 @@
 - Dropped wake-word (Apple won't grant background mic to indie apps; Siri shortcut covers lock-screen).
 - **Live Activity / Dynamic Island** (commit `0b204e1`, 2026-05-28): ActivityKit local-update controller (`LiveActivityController`), shared `HermesActivityAttributes`, new widget-extension target (`HermesVoiceWidget`) rendering lock-screen + Dynamic Island (compact/expanded/minimal). Driven from `ConversationViewModel.syncLiveActivity()` (thinking/speaking; recording excluded) and `NotificationManager` for scheduled-fire auto-play. v1 informational — tap opens app; interactive stop is v2 per spec. **Hardened in `e5b88e6`**: the `finish()` teardown race is fixed (serial task-chain so `end()` always precedes the next `request()`), a 180s `staleDate` safety net was added, and the swallowed `Activity.request` error is now logged.
 - **Loose ends + polish** (commit `e5b88e6`, 2026-05-28): (1) wired `lastScheduledArrival` → a tappable "SCHEDULED UPDATE" badge in MainView (idle-only) that resumes the session and clears itself; (2) scrollback-rail tap now opens an in-app `TranscriptView` (live in-memory transcript) instead of the all-sessions History sheet; (3) added a tool-agnostic `.bullets` ActionCard variant (conservative bulleted/numbered-list detection, falls back to plain text).
-- Roadmap backlog still has: Bonjour/mDNS discovery + onboarding, CarPlay (entitlement probe first), remaining redesign polish (on-device walkthrough, voice picker; richer ActionCard variants need structured backend tool output).
+- **Bonjour discovery + first-launch onboarding** (commits `3558dff` backend, `35ff045` iOS, 2026-05-28): backend advertises `_hermes-voice._tcp` via zeroconf (`app/mdns.py`, lifespan-wired; LAN IP via UDP-connect trick to dodge the Tailscale 100.x addr; crash-safe lazy-import). iOS `OnboardingView` (full-screen until configured) discovers LAN backends (`BackendBrowser` = NWBrowser browse + NetService resolve) and/or takes a manual MagicDNS URL, test-connecting `/health` before saving + flipping `hasCompletedOnboarding`. `NSBonjourServices` added to Info.plist (required or discovery finds nothing). Spec + status: `.docs/ai/phases/bonjour-onboarding-spec.md`.
+- Roadmap backlog still has: CarPlay (entitlement probe first), remaining redesign polish (on-device walkthrough, voice picker; richer ActionCard variants need structured backend tool output).
 
 ## Build Status
 
@@ -28,6 +29,7 @@ Re-verified 2026-05-28 (post-Live-Activity commit `0b204e1`):
 - App icon updated, chime bundled in app bundle, all UI toolbars match brand.
 - Schedules confirmed working end-to-end on device (push + chime + voice create/delete). **Live Activity NOT yet smoke-tested on a real device.**
 - **Re-verified after polish/hardening commit `e5b88e6`** (Live Activity serialization + arrival badge + in-app transcript + bullet ActionCard): iOS **BUILD SUCCEEDED** (incl. widget); backend untouched (41/41 holds). Not yet on-device.
+- **Re-verified after Bonjour/onboarding commits `3558dff`/`35ff045`**: backend `uv run pytest` → **44/44** (+3 `test_mdns.py`); iOS **BUILD SUCCEEDED** (new OnboardingView + BackendBrowser + NSBonjourServices). Not yet on-device — discovery + onboarding need a real device with a same-Wi-Fi Mac to verify.
 
 ## Schedules — CONFIRMED WORKING END-TO-END (2026-05-28)
 
@@ -77,12 +79,12 @@ Without MCP registration: schedules only creatable via in-app UI, not voice.
 
 ## Next Session
 
-Schedules (A/B/C) shipped + live-verified; Live Activity v1 shipped + hardened; loose ends (arrival badge) + polish (transcript expand, bullet cards) shipped in `e5b88e6` — all build-green 2026-05-28.
+All three workstreams from the 2026-05-28 session are shipped + build-green: Schedules (A/B/C, live-verified), Live Activity v1 (shipped + hardened), loose ends + polish (`e5b88e6`), and Bonjour discovery + onboarding (`3558dff`/`35ff045`). Nothing in flight.
 
-**Active:** Workstream 2 — Bonjour/mDNS discovery + first-launch onboarding. User picked it but it has a real design fork (awaiting answer): mDNS does NOT traverse Tailscale (link-local multicast vs point-to-point overlay), and Tailscale MagicDNS is the primary remote path. So LAN Bonjour only helps same-Wi-Fi. Backend currently does not advertise any `_tcp` service; settings are manual URL+token in UserDefaults (no Keychain, no onboarding gate). Fork options surfaced: discovery scope (LAN Bonjour + manual/MagicDNS vs manual-only polished), custom `_hermes-voice._tcp` advertisement (needs backend zeroconf dep) vs generic `_http._tcp` browse, onboarding gate shape, Keychain-now-or-later. See `map-surfaces` workflow output for the full map.
+**User setup to make LAN discovery useful (one line):** the backend serves HTTPS with a Tailscale cert (valid only for `*.ts.net`). For a discovered LAN backend's URL to validate, set `HERMES_VOICE_PUBLIC_HOST=<your-mac>.tailXXXX.ts.net` in `backend/.env` and restart — then discovery (same Wi-Fi) prefills the cert-valid Tailscale URL. Leave it empty only if the backend serves plain HTTP on the LAN. (No public_host → a discovered HTTPS LAN-IP URL will cert-mismatch; manual MagicDNS entry still works.)
 
-Other remaining (any of):
-1. On-device smoke test of Live Activity (PTT + scheduled fire) and the new arrival badge / transcript.
+Remaining (any of — all need a real device):
+1. On-device smoke test: Live Activity (PTT + scheduled fire), arrival badge, transcript expand, AND the new onboarding + Bonjour discovery (needs a same-Wi-Fi Mac running the backend).
 2. On-device walkthrough every state of the redesign; fix layout bugs.
 3. Voice picker in Settings → ElevenLabs voices.
 4. CarPlay entitlement probe.

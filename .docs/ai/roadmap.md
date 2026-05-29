@@ -23,7 +23,7 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 - [ ] Wire APNs key into `backend/.env`, register device, fire test schedule
 
 ### Then — daily-driver features (sequenced)
-- [ ] Bonjour/mDNS backend discovery + first-launch onboarding
+- [x] Bonjour/mDNS backend discovery + first-launch onboarding — SHIPPED (`3558dff` backend, `35ff045` iOS, 2026-05-28). Backend advertises `_hermes-voice._tcp`; iOS full-screen `OnboardingView` discovers LAN backends + manual MagicDNS entry, test-connects `/health` before saving. LAN-only (mDNS doesn't traverse Tailscale). **User step:** set `HERMES_VOICE_PUBLIC_HOST` in `backend/.env` for cert-valid discovered URLs. On-device test pending. Spec: `.docs/ai/phases/bonjour-onboarding-spec.md`.
 - [x] Live Activity / Dynamic Island — SHIPPED (`0b204e1`, 2026-05-28); v1 informational (tap opens app), interactive stop button is v2 per `.docs/ai/phases/live-activity-spec.md`. Hardened in `e5b88e6` (teardown race fixed via serial task-chain, `staleDate` safety net, request errors logged). On-device smoke test still pending.
 - [ ] CarPlay support — **probe entitlement first**, Apple may refuse indie request
 

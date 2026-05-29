@@ -32,7 +32,7 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 - [x] Scrollback tap → in-app expand transcript — SHIPPED (`e5b88e6`); opens in-app `TranscriptView` (live in-memory transcript), no longer the History sheet
 - [x] ActionCard variants beyond calendar — bulleted/numbered-list `.bullets` variant SHIPPED (`e5b88e6`). Device-list / todo-with-checkboxes / key-value still **blocked on structured backend tool output** (today only `ToolCall(name, preview, ok)` arrives)
 - [x] Scheduled-arrival badge in MainView (tap → resume session) — SHIPPED (`e5b88e6`)
-- [ ] Voice picker in Settings wired to ElevenLabs voices
+- [x] Voice picker in Settings wired to ElevenLabs voices — SHIPPED (`27d04c6` backend, `6f2f3ad` iOS, 2026-05-29). `GET /api/voices` + per-request `voice_id` override (no server-global mutation); Settings VOICE picker bound to `AppSettings.selectedVoiceId`. Also fixed onboarding to skip when a non-default backend is already configured (upgrade path).
 
 ### Dropped
 - ~~D — Wake word~~ — iOS won't allow background mic for indie apps; Siri shortcut (`AskHermesIntent`) covers the lock-screen case. Foreground-only wake-word didn't earn its keep.

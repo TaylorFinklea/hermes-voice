@@ -32,6 +32,11 @@ struct MainView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
+                    if let turns = continuingTurnCount {
+                        ContinuingPill(turns: turns) { activeSheet = .transcript }
+                            .padding(.top, 6)
+                    }
+
                     ScrollbackRail(
                         items: scrollbackTurns,
                         onTapTurn: { activeSheet = .transcript }
@@ -103,12 +108,39 @@ struct MainView: View {
             .accessibilityLabel("History")
         }
         ToolbarItem(placement: .topBarTrailing) {
+            Button { conversation.reset() } label: {
+                Image(systemName: "square.and.pencil")
+                    .foregroundStyle(canStartNewConversation ? HVColor.bronze : HVColor.creamFaint)
+            }
+            .disabled(!canStartNewConversation)
+            .accessibilityLabel("New conversation")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
             Button { activeSheet = .settings } label: {
                 Image(systemName: "gearshape")
                     .foregroundStyle(HVColor.bronze)
             }
             .accessibilityLabel("Settings")
         }
+    }
+
+    /// "New conversation" is available only at rest (idle/error) and only when
+    /// there's actually a thread to clear — resetting an empty one is a no-op.
+    private var canStartNewConversation: Bool {
+        let resting: Bool
+        switch conversation.state {
+        case .idle, .error: resting = true
+        default: resting = false
+        }
+        return resting && (conversation.sessionId != nil || !conversation.messages.isEmpty)
+    }
+
+    /// Turns completed in the current in-memory thread, or nil when there's no
+    /// active Hermes session yet (drives the "continuing · N" pill).
+    private var continuingTurnCount: Int? {
+        guard conversation.sessionId != nil else { return nil }
+        let turns = conversation.messages.filter { $0.role == .user }.count
+        return turns > 0 ? turns : nil
     }
 
     private func sendText() {
@@ -226,6 +258,37 @@ private struct ScheduledArrivalBadge: View {
     }
 }
 
+// MARK: - Continuing-thread pill
+
+/// Shown under the title while a Hermes session is active, so continuity is
+/// visible (the now-playing hero only shows the latest turn). Tapping opens the
+/// in-app transcript of the current thread.
+private struct ContinuingPill: View {
+    let turns: Int
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Circle().fill(HVColor.amber).frame(width: 5, height: 5)
+                Text("CONTINUING · \(turns) TURN\(turns == 1 ? "" : "S")")
+                    .font(HVFont.micro.weight(.semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(HVColor.creamDim)
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(HVColor.creamDim)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(HVColor.creamSurface))
+            .overlay(Capsule().strokeBorder(HVColor.hairline, lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open transcript — continuing \(turns) turns")
+    }
+}
+
 // MARK: - Bottom dock
 
 struct BottomDock: View {
@@ -260,12 +323,18 @@ struct BottomDock: View {
                         .opacity(typingMode ? 0.4 : 1.0)
                         .allowsHitTesting(!typingMode)
 
-                    DockSideButton(
-                        systemName: closeButtonGlyph,
-                        tint: HVColor.creamDim,
-                        action: handleCloseTap
-                    )
-                    .accessibilityLabel(closeButtonLabel)
+                    if isCancellable {
+                        DockSideButton(
+                            systemName: "xmark",
+                            tint: HVColor.creamDim,
+                            action: { conversation.cancelCurrentTurn() }
+                        )
+                        .accessibilityLabel("Cancel turn")
+                    } else {
+                        // Keep the mic centered. "New conversation" moved to the
+                        // top bar, so the dock X is cancel-only and hidden at rest.
+                        Color.clear.frame(width: 44, height: 44)
+                    }
                 }
             }
             .padding(.horizontal, 22)
@@ -274,32 +343,13 @@ struct BottomDock: View {
         }
     }
 
-    private var closeButtonGlyph: String {
+    /// The dock X is cancel-only now ("new conversation" moved to the top bar),
+    /// shown only when there's an in-flight turn to cut. (`.speaking` uses the
+    /// PlaybackTransport branch above, so this covers recording/sending/thinking.)
+    private var isCancellable: Bool {
         switch conversation.state {
-        case .recording, .thinking, .sending: return "xmark"
-        default: return "arrow.counterclockwise"
-        }
-    }
-
-    private var closeButtonLabel: String {
-        switch conversation.state {
-        case .recording: return "Cancel recording"
-        case .thinking, .sending: return "Cancel turn"
-        default: return "New conversation"
-        }
-    }
-
-    private func handleCloseTap() {
-        switch conversation.state {
-        case .recording, .thinking, .sending, .speaking:
-            // Closing during an in-flight turn means: cut it. Easiest path
-            // is the existing barge-in plumbing — start a new recording,
-            // then immediately stop it. But the user probably wanted full
-            // cancel: rely on reset for idle/error, no-op interrupt for
-            // active turns since the mic button itself handles barge-in.
-            conversation.cancelCurrentTurn()
-        case .idle, .error:
-            conversation.reset()
+        case .recording, .thinking, .sending: return true
+        default: return false
         }
     }
 }

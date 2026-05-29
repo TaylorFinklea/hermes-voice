@@ -62,21 +62,21 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 
 From the adversarially-verified review (40 kept / 34 confirmed; harness-deck report `20260529-bug-arch-review`; full data in workflow output `wf42mvxx6`). `voice_id` path-injection already fixed (`0deab6a`).
 
-**Quick wins (localized, high-confidence):**
-- [ ] `schedules.py` — in-flight id set so a slow (>5s) Hermes turn isn't re-fired every 5s tick (~36× duplicate subprocesses/pushes). **Top bug.**
-- [ ] `main.py:98-104` — lifespan: cancel executor before mDNS teardown; wrap `stop_mdns` in its own try/except.
-- [ ] `main.py:424` + `schedules.py:521` — keep `create_task` refs in a set + `add_done_callback(discard)` (GC-cancellation guard).
-- [ ] `ConversationDetailView` — `.onDisappear { player.stop() }`.
-- [ ] `models.py` — `DeviceRegisterRequest.token` pattern `^[0-9a-fA-F]{64}$`.
-- [ ] `schedules.py:_connect` — `PRAGMA journal_mode=WAL` + `busy_timeout`.
-- [ ] `OnboardingView` — observe `browser.resolveError`; surface it.
-- [ ] `BackendBrowser` — generation id on resolve so a stale callback can't overwrite the URL.
+**Quick wins (localized, high-confidence) — DONE (`bffaa5e` backend, `74a96e4` iOS, 2026-05-29):**
+- [x] `schedules.py` — in-flight id set so a slow (>5s) Hermes turn isn't re-fired every 5s tick (~36× duplicate subprocesses/pushes). **Top bug.**
+- [x] `main.py` — lifespan: cancel executor before mDNS teardown; wrap `stop_mdns` in its own try/except.
+- [x] `main.py` + `schedules.py` — `create_task` refs held in a set + `add_done_callback(discard)` (GC-cancellation guard).
+- [x] `ConversationDetailView` — `.onDisappear { player.stop() }`.
+- [x] `models.py` — `DeviceRegisterRequest.token` pattern `^[0-9a-fA-F]{64}$`.
+- [x] `schedules.py:_connect` — `PRAGMA journal_mode=WAL` + `busy_timeout`.
+- [x] `OnboardingView` — observes `browser.resolveError`.
+- [x] `BackendBrowser` — `ObjectIdentifier` generation guard on resolve.
 
-**Audio-session coordination cluster (related Medium bugs — best fixed together via one ref-counted session coordinator):**
-- [ ] `AudioPlayer.finish()` doesn't deactivate the session / release observers on natural completion (leaks ducking between turns).
-- [ ] `VoiceRecorder.stop()` unconditionally deactivates the shared session (barge-in yanks it from an overlapping player/chime).
-- [ ] Foreground scheduled-arrival auto-play uses a throwaway `AudioPlayer` that fights the VM player + double-drives Live Activity (route through the shared VM/player).
-- [ ] Barge-in during `.sending/.thinking` — `handle()`/`play()` not cancellation/generation-aware (likely; can clobber a new recording).
+**Audio-session coordination cluster — DONE via one ref-counted coordinator (`2736b96`, 2026-05-29), except barge-in:**
+- [x] New `AudioSessionCoordinator` (@MainActor, ref-counted acquire/release); `AudioPlayer` natural-end now releases session + observers (unified teardown) — no more ducking leak.
+- [x] `VoiceRecorder` + `ChimePlayer` routed through the coordinator — can't yank the session out from under each other.
+- [x] Foreground scheduled-arrival auto-play gated to idle (weak VM ref) + holds one coordinator session across chime→reply + single owned player (no throwaway fight, no LA double-drive).
+- [ ] Barge-in during `.sending/.thinking` — `handle()`/`play()` not cancellation/generation-aware. **DEFERRED** (review "likely"; the fix is entangled with the existing `startRecording()` guard ordering — `.speaking` barge-in only works via the 50ms-sleep → handle()-sets-idle race. Needs on-device verification of current barge-in behavior before changing.)
 
 **Other confirmed:**
 - [ ] Streaming-TTS producer blocks forever / leaks the ElevenLabs connection if no consumer drains the queue (`main.py:404-425`; + `audio_store` eviction should cancel the producer).

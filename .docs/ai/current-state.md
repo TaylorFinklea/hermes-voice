@@ -11,6 +11,7 @@
 **Date**: 2026-05-29
 
 - **TestFlight build 5 (1.0) uploaded** (`5b7e786`, 2026-05-29) via `scripts/release.sh` — first archive to include the `HermesVoiceWidget` extension; auto-provisioning worked. Contains the redesign + schedules + Live Activity + loose-ends/polish + Bonjour/onboarding. Processing on App Store Connect; installable via TestFlight.
+- **Bug + architecture review** (2026-05-29): adversarially-verified (5 finders → 2 skeptics each), 40 kept findings; harness-deck report `20260529-bug-arch-review`, backlog in roadmap. Fixed this session: `voice_id` path-injection (`0deab6a`); 8 quick wins (`bffaa5e` backend, `74a96e4` iOS) incl. the **top scheduler concurrent-re-fire bug** (in-flight guard); and the **audio-session cluster** via a new ref-counted `AudioSessionCoordinator` (`2736b96`) routing recorder/player/chime through one owner + gated scheduled-arrival auto-play. **Deferred:** the barge-in cancellation race (review "likely"; entangled with the `startRecording()` guard ordering — needs on-device verification first). Remaining backlog: other-confirmed defects, security hardening (`/health` disclosure, token-on-0.0.0.0), architecture refactors.
 - **Voice picker** (`27d04c6` backend, `6f2f3ad` iOS, 2026-05-29): TTS `voice_id` is now a per-request override (Protocol `synthesize`/`stream` take `voice_id`; ElevenLabs honors it, others ignore); `GET /api/voices` lists the ElevenLabs catalog (`[]` for other providers). iOS Settings VOICE picker → `AppSettings.selectedVoiceId`, sent with every turn + replay. Onboarding now auto-skips when a non-default backend is already configured (upgrade path).
 - Shipped the SwiftUI redesign ("E · Focus / Now-Playing — deepened") across all six screens; new icon and brand design system.
 - Scoped and shipped all three schedule phases per `.docs/ai/phases/schedules-spec.md`.
@@ -32,7 +33,8 @@ Re-verified 2026-05-28 (post-Live-Activity commit `0b204e1`):
 - Schedules confirmed working end-to-end on device (push + chime + voice create/delete). **Live Activity NOT yet smoke-tested on a real device.**
 - **Re-verified after polish/hardening commit `e5b88e6`** (Live Activity serialization + arrival badge + in-app transcript + bullet ActionCard): iOS **BUILD SUCCEEDED** (incl. widget); backend untouched (41/41 holds). Not yet on-device.
 - **Re-verified after Bonjour/onboarding commits `3558dff`/`35ff045`**: backend `uv run pytest` → **44/44** (+3 `test_mdns.py`); iOS **BUILD SUCCEEDED** (new OnboardingView + BackendBrowser + NSBonjourServices). Not yet on-device — discovery + onboarding need a real device with a same-Wi-Fi Mac to verify.
-- **Re-verified after voice-picker commits `27d04c6`/`6f2f3ad` (2026-05-29)**: backend `uv run pytest` → **48/48** (+4 `test_voices.py`); iOS **BUILD SUCCEEDED**. Shipped in TestFlight build 5.
+- **Re-verified after voice-picker commits `27d04c6`/`6f2f3ad` (2026-05-29)**: backend `uv run pytest` → **48/48** (+4 `test_voices.py`); iOS **BUILD SUCCEEDED**. (Voice picker is NOT in TestFlight build 5 — landed after that archive.)
+- **Re-verified after review fixes (2026-05-29)**: backend `uv run pytest` → **50/50** (+2 `test_voices` security tests); iOS **BUILD SUCCEEDED** (quick wins + audio-session coordinator). **None of the review fixes are on-device-tested yet** — the audio-session coordinator changes session lifecycle and needs a real-device pass (build 6).
 
 ## Schedules — CONFIRMED WORKING END-TO-END (2026-05-28)
 

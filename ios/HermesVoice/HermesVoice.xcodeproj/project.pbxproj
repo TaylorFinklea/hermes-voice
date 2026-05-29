@@ -24,6 +24,7 @@
 		59704D53AD1D886AB38970DA /* VoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E5656D26B4AA84AEC2D2C91 /* VoiceRecorder.swift */; };
 		5B513B4C2389EF68D0EA5929 /* WatchPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98056B3047C8E9486B041995 /* WatchPlayer.swift */; };
 		5EBA33362E4F96514827A2F6 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F5107EB40D7F7FFED269FED /* HistoryView.swift */; };
+		602D649F831D9569F2670F42 /* LocalTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 506CD3DFC00ECED6AA2941B4 /* LocalTranscriber.swift */; };
 		6407D34427795A67562C685F /* HermesVoiceWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0607EA95518EA19F6E5242C3 /* HermesVoiceWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		6AD5D3983E5989A77FB320DD /* HermesVoiceApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBD27C5179FB969C4909958A /* HermesVoiceApp.swift */; };
 		6CEB7976385BBAEDEE70439F /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F53A66609042992504ECC8 /* Brand.swift */; };
@@ -36,6 +37,7 @@
 		A52398B744D8E740D17644A7 /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F301EE0D51AE7E6149CB6028 /* AudioPlayer.swift */; };
 		B14807A172CDC8E0AFAF07F5 /* HermesActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53A4809563E9438638E7D768 /* HermesActivityAttributes.swift */; };
 		B1E6B7D652D5A5ACBCC744CD /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C4276ABED593A1B47F0F329 /* OnboardingView.swift */; };
+		B9ED4E6547D4593931103DE7 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 9955B76AAFE21B8298117D40 /* FluidAudio */; };
 		BBFC4A972669401D499D95D8 /* HermesVoiceLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B91CA01336A6D528F12A4D2F /* HermesVoiceLiveActivity.swift */; };
 		C162BAFCDD77E8588F5CC0E3 /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F53A66609042992504ECC8 /* Brand.swift */; };
 		C3B835239AD589D5462B1727 /* ChimePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB3B7188CD4A6892599F80E /* ChimePlayer.swift */; };
@@ -107,6 +109,7 @@
 		3FD0611B5E35BB66D8E090EE /* SchedulesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulesView.swift; sourceTree = "<group>"; };
 		478500CC3B0CD00639F5C2AA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		4912C5CDAC7F3FE3421877C9 /* HermesVoiceWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesVoiceWatchApp.swift; sourceTree = "<group>"; };
+		506CD3DFC00ECED6AA2941B4 /* LocalTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTranscriber.swift; sourceTree = "<group>"; };
 		53A4809563E9438638E7D768 /* HermesActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesActivityAttributes.swift; sourceTree = "<group>"; };
 		58B9A5FC3DB9A7AB2383F5ED /* BackendBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendBrowser.swift; sourceTree = "<group>"; };
 		71159F3B5BD1FDDED47FF2ED /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
@@ -142,6 +145,17 @@
 		F301EE0D51AE7E6149CB6028 /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
 		F4E7E039FC5FC213E5C95D08 /* HermesVoiceWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HermesVoiceWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AC79DFF9175F553755534162 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B9ED4E6547D4593931103DE7 /* FluidAudio in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		042A3715421359E0C207C9CC /* Shared */ = {
@@ -301,6 +315,7 @@
 				9FB3B7188CD4A6892599F80E /* ChimePlayer.swift */,
 				8E038B022A79A275C21BB70B /* HermesVoiceAPI.swift */,
 				F10E963463B97606F132C982 /* LiveActivityController.swift */,
+				506CD3DFC00ECED6AA2941B4 /* LocalTranscriber.swift */,
 				71159F3B5BD1FDDED47FF2ED /* NotificationManager.swift */,
 				E262A46EED41E59D516CD6EB /* PhoneWatchBridge.swift */,
 				9E5656D26B4AA84AEC2D2C91 /* VoiceRecorder.swift */,
@@ -325,6 +340,7 @@
 			buildPhases = (
 				029D8AD7A1598F30B7705851 /* Sources */,
 				B4A15645B0E5607CBA68EA84 /* Resources */,
+				AC79DFF9175F553755534162 /* Frameworks */,
 				86C16A3D157B7C0988084966 /* Embed Foundation Extensions */,
 				47F644ABEECE75D5F848175A /* Embed Watch Content */,
 			);
@@ -336,6 +352,7 @@
 			);
 			name = HermesVoice;
 			packageProductDependencies = (
+				9955B76AAFE21B8298117D40 /* FluidAudio */,
 			);
 			productName = HermesVoice;
 			productReference = D84A69132372FE451302742E /* HermesVoice.app */;
@@ -408,6 +425,9 @@
 			);
 			mainGroup = 7AF58582FB1B7BBE3D59E3BF;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E7412894C1442AF4B38C7720 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B108727DF6859EF2A5AB803C /* Products */;
 			projectDirPath = "";
@@ -463,6 +483,7 @@
 				2B84FDCF95AE614F422952E7 /* HeroPane.swift in Sources */,
 				5EBA33362E4F96514827A2F6 /* HistoryView.swift in Sources */,
 				112A641E9BAB5EF32CF2887B /* LiveActivityController.swift in Sources */,
+				602D649F831D9569F2670F42 /* LocalTranscriber.swift in Sources */,
 				0AA8C39365DB851D04C7582E /* MainView.swift in Sources */,
 				3D3CEBD0C0B5596F50E6E865 /* Message.swift in Sources */,
 				0C61B425F45DCF8A09D475DC /* NotificationManager.swift in Sources */,
@@ -785,6 +806,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E7412894C1442AF4B38C7720 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/FluidInference/FluidAudio";
+			requirement = {
+				kind = revision;
+				revision = 50aa07193e84b9cf192d8f36041c24a9a4867cd6;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9955B76AAFE21B8298117D40 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E7412894C1442AF4B38C7720 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 2DF5568C59CCE513383951E0 /* Project object */;
 }

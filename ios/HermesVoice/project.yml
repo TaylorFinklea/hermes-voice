@@ -20,6 +20,18 @@ settings:
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "8"
 
+# On-device speech-to-text — NVIDIA Parakeet (TDT) ASR via CoreML, the same
+# FluidAudio package the user runs in ~/git/tesela. Pinned to the exact revision
+# tesela proved so the API we mirror (AsrModels.downloadAndLoad / AsrManager /
+# TdtDecoderState.make) can't drift out from under us. FluidAudio declares
+# platforms [.macOS(.v14), .iOS(.v17)] so our iOS 17 floor is fine; it downloads
+# + caches its own ~450 MB model set at runtime (nothing bundled). Loosen to a
+# branch/version pin later if you want to track upstream.
+packages:
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio
+    revision: 50aa07193e84b9cf192d8f36041c24a9a4867cd6
+
 targets:
   HermesVoice:
     type: application
@@ -31,6 +43,9 @@ targets:
         embed: true
       - target: HermesVoiceWidget
         embed: true
+      # On-device parakeet STT (main app only — Watch/Widget don't transcribe).
+      - package: FluidAudio
+        product: FluidAudio
     info:
       path: HermesVoice/Info.plist
       properties:

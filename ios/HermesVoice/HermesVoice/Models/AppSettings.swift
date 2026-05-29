@@ -89,6 +89,15 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(selectedVoiceId, forKey: Keys.selectedVoiceId) }
     }
 
+    /// Transcribe mic turns on-device (parakeet via FluidAudio) instead of
+    /// uploading audio for server STT. Defaults ON, but it's a no-op until the
+    /// model is downloaded in Settings — until then (and if local transcription
+    /// ever fails) the turn falls back to the audio-upload path, so there's no
+    /// regression. See `LocalTranscriber`.
+    @Published var useOnDeviceSTT: Bool {
+        didSet { UserDefaults.standard.set(useOnDeviceSTT, forKey: Keys.useOnDeviceSTT) }
+    }
+
     init() {
         let d = UserDefaults.standard
         self.backendURL = d.string(forKey: Keys.backendURL) ?? "http://127.0.0.1:8765"
@@ -106,6 +115,10 @@ final class AppSettings: ObservableObject {
             as? Bool ?? true
         self.lastApnsToken = d.string(forKey: Keys.lastApnsToken) ?? ""
         self.selectedVoiceId = d.string(forKey: Keys.selectedVoiceId) ?? ""
+        // Default ON: we want on-device transcription to be the out-of-box
+        // behavior once the model is present. Harmless before download (falls
+        // back to upload).
+        self.useOnDeviceSTT = d.object(forKey: Keys.useOnDeviceSTT) as? Bool ?? true
         // Onboarding shows on a fresh install (default URL + flag unset). Treat
         // an already-configured non-default backend as onboarded so upgraders
         // aren't bounced back through onboarding.
@@ -126,5 +139,6 @@ final class AppSettings: ObservableObject {
         static let lastApnsToken = "hv.lastApnsToken"
         static let hasCompletedOnboarding = "hv.hasCompletedOnboarding"
         static let selectedVoiceId = "hv.selectedVoiceId"
+        static let useOnDeviceSTT = "hv.useOnDeviceSTT"
     }
 }

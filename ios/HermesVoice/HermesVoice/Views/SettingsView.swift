@@ -18,6 +18,8 @@ struct SettingsView: View {
     @State private var voicesLoading = false
     @State private var voicesError = ""
 
+    @StateObject private var transcriber = LocalTranscriber.shared
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -28,6 +30,7 @@ struct SettingsView: View {
                     schedulesSection
                     notificationsSection
                     voiceSection
+                    transcriptionSection
                     modeSection
                     watchSection
                     diagnosticsSection
@@ -200,6 +203,66 @@ struct SettingsView: View {
             voicesError = ""
         } catch {
             voicesError = "Couldn't load voices (is the backend reachable?)."
+        }
+    }
+
+    @ViewBuilder
+    private var transcriptionSection: some View {
+        Section {
+            switch transcriber.state {
+            case .notDownloaded:
+                Button {
+                    Task { await transcriber.prepare() }
+                } label: {
+                    HStack {
+                        Text("Download model (~450 MB)")
+                            .font(HVFont.body)
+                            .foregroundStyle(HVColor.amber)
+                        Spacer()
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(HVColor.amber)
+                    }
+                }
+                .listRowBackground(HVColor.amberGlow.opacity(0.5))
+            case .downloading:
+                HStack(spacing: 8) {
+                    ProgressView().tint(HVColor.amber)
+                    Text("Downloading parakeet-v2…")
+                        .font(HVFont.body)
+                        .foregroundStyle(HVColor.cream)
+                }
+                .listRowBackground(HVColor.creamSurface)
+            case .ready:
+                HVToggleRow(label: "Transcribe on device", isOn: $settings.useOnDeviceSTT)
+                HVKVRow(label: "Model", value: "parakeet-v2 · ready", accent: HVColor.amber)
+                Button {
+                    transcriber.deleteModel()
+                } label: {
+                    Text("Remove model")
+                        .font(HVFont.body)
+                        .foregroundStyle(HVColor.bronze)
+                }
+                .listRowBackground(HVColor.creamSurface)
+            case .failed(let msg):
+                Text(msg)
+                    .font(HVFont.captionTiny)
+                    .foregroundStyle(HVColor.bronze)
+                    .listRowBackground(HVColor.creamSurface)
+                Button {
+                    Task { await transcriber.prepare() }
+                } label: {
+                    Text("Retry download")
+                        .font(HVFont.body)
+                        .foregroundStyle(HVColor.amber)
+                }
+                .listRowBackground(HVColor.amberGlow.opacity(0.5))
+            }
+        } header: {
+            sectionHeader("ON-DEVICE TRANSCRIPTION")
+        } footer: {
+            Text("Runs parakeet-v2 on this iPhone — your audio never leaves the device and there's no upload wait. Downloaded once (~450 MB) and cached on-device. When off, or before download, mic turns upload audio for server transcription instead.")
+                .font(HVFont.captionTiny)
+                .foregroundStyle(HVColor.creamDim)
         }
     }
 

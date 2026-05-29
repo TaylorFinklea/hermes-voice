@@ -24,11 +24,12 @@ final class ConversationViewModel: ObservableObject {
         }
     }
 
-    /// Sub-state of `.sending` exposed for the pipeline-step UI. We don't
-    /// have a streaming backend, so the phases reflect what we honestly
-    /// know on the client: the request is uploading until the response
-    /// header arrives, then we count anything else as "processing".
-    enum SendingPhase: Equatable { case uploading, processing }
+    /// Sub-state of `.sending` exposed for the pipeline-step UI.
+    /// `.transcribing` = on-device STT is running (nothing uploaded); `.uploading`
+    /// / `.processing` = the audio-upload path (request in flight, then waiting
+    /// on the server). The on-device path jumps straight to `.thinking` the
+    /// instant the local transcript lands.
+    enum SendingPhase: Equatable { case transcribing, uploading, processing }
 
     @Published private(set) var state: State = .idle {
         didSet {
@@ -126,7 +127,14 @@ final class ConversationViewModel: ObservableObject {
             return
         }
         lastClipDuration = recorder.lastClipDuration
-        sendingPhase = .uploading
+
+        // On-device transcription turns an audio turn into a text turn: if the
+        // parakeet model is ready, we transcribe locally (audio never leaves the
+        // phone) and run the normal text-stream path. Anything that goes wrong —
+        // disabled, model not ready, or transcription throws — falls back to the
+        // audio-upload path with the same clip, so there's no regression.
+        let useLocal = settings.useOnDeviceSTT && LocalTranscriber.shared.isReady
+        sendingPhase = useLocal ? .transcribing : .uploading
         state = .sending
 
         let api = self.api
@@ -134,6 +142,30 @@ final class ConversationViewModel: ObservableObject {
         let voiceId = settings.selectedVoiceId
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
+
+            if useLocal {
+                do {
+                    let text = try await LocalTranscriber.shared.transcribe(audioFileURL: url)
+                    VoiceRecorder.discard(url)
+                    try Task.checkCancellation()
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { self.state = .idle; return }  // heard nothing
+                    self.messages.append(Message(role: .user, text: trimmed))
+                    self.state = .thinking
+                    await self.streamTextTurnBody(trimmed, sessionId: currentSession, voiceId: voiceId)
+                    return
+                } catch is CancellationError {
+                    VoiceRecorder.discard(url)
+                    return
+                } catch {
+                    // Local transcription failed → fall through to upload using
+                    // the same clip (still on disk). If we were cancelled, bail.
+                    if Task.isCancelled { VoiceRecorder.discard(url); return }
+                    self.sendingPhase = .uploading
+                }
+            }
+
+            // Audio-upload path (default, and the on-device fallback).
             // Bump to "processing" after a short upload window so the pipeline
             // UI doesn't sit on "uploading" the whole time.
             let phaseFlip = Task { @MainActor [weak self] in
@@ -170,26 +202,34 @@ final class ConversationViewModel: ObservableObject {
         messages.append(Message(role: .user, text: trimmed))
         state = .thinking
 
-        let api = self.api
         let currentSession = sessionId
         let voiceId = settings.selectedVoiceId
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            do {
-                try await self.consumeTurn(
-                    api.streamText(trimmed, sessionId: currentSession, voiceId: voiceId),
-                    appendUserFromTranscribed: false
-                )
-            } catch is CancellationError {
-                // user barged in; userPressedMic already moved us to recording
-            } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code != 0 {
-                await self.sendTextFallback(trimmed, sessionId: currentSession, voiceId: voiceId)
-            } catch {
-                if !Task.isCancelled { self.failTurn(error) }
-            }
+            await self.streamTextTurnBody(trimmed, sessionId: currentSession, voiceId: voiceId)
         }
         currentTurn = task
         await task.value
+    }
+
+    /// Streams a text turn and commits it to the transcript. Shared by typed
+    /// text (`sendText`) and on-device-transcribed audio (`stopRecordingAndSend`).
+    /// Does NOT create its own Task — the caller owns `currentTurn` so barge-in
+    /// cancels the right thing. Falls back to a single-shot text POST if the
+    /// streaming endpoint is unavailable; swallows cancellation.
+    private func streamTextTurnBody(_ trimmed: String, sessionId: String?, voiceId: String) async {
+        do {
+            try await consumeTurn(
+                api.streamText(trimmed, sessionId: sessionId, voiceId: voiceId),
+                appendUserFromTranscribed: false
+            )
+        } catch is CancellationError {
+            // user barged in; userPressedMic already moved us to recording
+        } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code != 0 {
+            await sendTextFallback(trimmed, sessionId: sessionId, voiceId: voiceId)
+        } catch {
+            if !Task.isCancelled { failTurn(error) }
+        }
     }
 
     /// Consume an SSE turn stream, updating the transcript + state live.

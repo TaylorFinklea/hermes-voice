@@ -181,14 +181,20 @@ private struct HeroSending: View {
                     label: conversation.lastClipDuration.map { String(format: "captured %.1fs audio", $0) } ?? "captured audio",
                     status: .done
                 )
-                PipelineStep(
-                    label: "uploading to backend",
-                    status: conversation.sendingPhase == .uploading ? .active : .done
-                )
-                PipelineStep(
-                    label: "transcribing + dispatching to hermes",
-                    status: conversation.sendingPhase == .processing ? .active : .pending
-                )
+                if conversation.sendingPhase == .transcribing {
+                    // On-device path: nothing uploads — parakeet runs locally,
+                    // then we jump straight to the thinking pane.
+                    PipelineStep(label: "transcribing on device", status: .active)
+                } else {
+                    PipelineStep(
+                        label: "uploading to backend",
+                        status: conversation.sendingPhase == .uploading ? .active : .done
+                    )
+                    PipelineStep(
+                        label: "transcribing + dispatching to hermes",
+                        status: conversation.sendingPhase == .processing ? .active : .pending
+                    )
+                }
             }
         }
     }

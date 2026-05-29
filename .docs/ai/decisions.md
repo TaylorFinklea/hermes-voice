@@ -128,3 +128,11 @@
 
 **Rationale**: The task-chain is the idiomatic Swift-concurrency way to serialize async work on an actor and subsumes the flag approach (it *is* the handle). ~10 lines, no new dependencies, kills the whole race class rather than papering over it. `staleDate` was deliberately set generous (far longer than any single turn) so it never marks a live turn stale — distinct from `nil` ("never stale"), which left a force-quit activity stuck on the lock screen forever.
 
+## [2026-05-29] One `.sheet(item:)` per view, never stacked `.sheet(isPresented:)`
+
+**Context**: Adding the in-app transcript sheet to MainView (redesign W3) silently broke the History sheet — discovered only on device. MainView had three `.sheet(isPresented:)` modifiers stacked on one view (settings/history/transcript). SwiftUI lets a later sheet modifier shadow earlier ones on the same view, so History stopped presenting once transcript was added.
+
+**Decision**: MainView drives all modal presentation from a single `.sheet(item: $activeSheet)` with an `ActiveSheet` enum (`settings`/`history`/`transcript`); env objects injected explicitly per case.
+
+**Rationale**: One presenter per view is the reliable SwiftUI pattern; stacking `.sheet(isPresented:)` (or `.fullScreenCover`) on a single view is a known footgun. The enum also makes "one sheet at a time" explicit, and adding a sheet is one more `case` rather than another stacked modifier that can shadow the others. Lesson, like the nested-sheet env-object one: this class of bug is Release/runtime-only and won't show up in `xcodebuild` — it needs the app actually running.
+

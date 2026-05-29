@@ -76,7 +76,7 @@ From the adversarially-verified review (40 kept / 34 confirmed; harness-deck rep
 - [x] New `AudioSessionCoordinator` (@MainActor, ref-counted acquire/release); `AudioPlayer` natural-end now releases session + observers (unified teardown) — no more ducking leak.
 - [x] `VoiceRecorder` + `ChimePlayer` routed through the coordinator — can't yank the session out from under each other.
 - [x] Foreground scheduled-arrival auto-play gated to idle (weak VM ref) + holds one coordinator session across chime→reply + single owned player (no throwaway fight, no LA double-drive).
-- [ ] Barge-in during `.sending/.thinking` — `handle()`/`play()` not cancellation/generation-aware. **DEFERRED** (review "likely"; the fix is entangled with the existing `startRecording()` guard ordering — `.speaking` barge-in only works via the 50ms-sleep → handle()-sets-idle race. Needs on-device verification of current barge-in behavior before changing.)
+- [x] Barge-in during `.sending/.thinking` — FIXED (`8a687fd`, 2026-05-29). Confirmed on device (stuck on Sending/Thinking, only X worked) + by a verified 12-agent state-machine trace: `userPressedMic`'s `.thinking/.sending` arm called `startRecording()` whose guard blocks from non-idle states. Fix: set `state = .idle` after cancel, before `startRecording()`. (The trace also REFUTED the feared "clobber race" — all components are @MainActor/serialized, so a cancelled turn can't run `handle()` concurrently; `.speaking` barge-in was already correct + deterministic.)
 
 **Other confirmed:**
 - [ ] Streaming-TTS producer blocks forever / leaks the ElevenLabs connection if no consumer drains the queue (`main.py:404-425`; + `audio_store` eviction should cancel the producer).
@@ -96,6 +96,12 @@ From the adversarially-verified review (40 kept / 34 confirmed; harness-deck rep
 - [ ] Long-lived per-provider `httpx.AsyncClient` (TLS reuse) for TTS/STT/MCP.
 - [ ] `Semaphore(2-3)` around `_fire_one`; text-only path flag for scheduled fires.
 - [ ] Typed tool-output schema (unblocks richer ActionCard variants).
+
+### From on-device testing (2026-05-29)
+
+- [x] History sheet stopped opening — FIXED (`efd121f`): three stacked `.sheet(isPresented:)` on MainView shadowed each other once the transcript sheet was added; collapsed to one `.sheet(item:)` enum.
+- [ ] **Turn hangs at "transcribing + dispatching to hermes" with no response/timeout** (reported on device; recording+upload succeeded, so it's server-side STT or `hermes.ask`). Needs backend-log diagnosis. Consider a client-side turn timeout + clear error so a hung turn surfaces instead of an indefinite spinner (today only URLSession's 60s default applies).
+- [ ] **Live tool-calls during thinking/sending** (feature request): stream tool-call events as Hermes emits them and render them in the pipeline UI (condensed, Hermes-like). Today tool-calls are audited only AFTER the turn (`fetch_tool_calls_since` post-`hermes.ask`). Needs backend streaming (SSE/WS or mid-turn session-DB polling) + client stream consumption; pairs with the typed-tool-output item above.
 
 ## Constraints
 

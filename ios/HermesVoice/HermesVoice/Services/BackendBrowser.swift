@@ -37,6 +37,9 @@ final class BackendBrowser: NSObject, ObservableObject {
     private var browser: NWBrowser?
     private var resolving: NetService?
     private var resolvingBackend: DiscoveredBackend?
+    // Identity of the in-flight NetService, so a late callback from a
+    // superseded resolve can't overwrite the current result.
+    private var resolvingId: ObjectIdentifier?
 
     func start() {
         guard browser == nil else { return }
@@ -58,6 +61,7 @@ final class BackendBrowser: NSObject, ObservableObject {
         browser = nil
         resolving?.stop()
         resolving = nil
+        resolvingId = nil
         isResolving = false
     }
 
@@ -85,6 +89,7 @@ final class BackendBrowser: NSObject, ObservableObject {
         svc.delegate = self
         svc.schedule(in: .main, forMode: .common)
         resolving = svc
+        resolvingId = ObjectIdentifier(svc)
         resolvingBackend = backend
         svc.resolve(withTimeout: timeout)
     }
@@ -114,11 +119,14 @@ extension BackendBrowser: NetServiceDelegate {
     nonisolated func netServiceDidResolveAddress(_ sender: NetService) {
         // Delegate fires on the main RunLoop (we scheduled it there). Read the
         // value-type results here, then hop to the actor — don't capture the
-        // non-Sendable NetService into the Task.
+        // non-Sendable NetService into the Task (ObjectIdentifier is Sendable).
         let host = sender.hostName
         let port = sender.port
+        let sid = ObjectIdentifier(sender)
         sender.stop()
         Task { @MainActor in
+            // Ignore a late callback from a superseded resolve.
+            guard self.resolvingId == sid else { return }
             self.isResolving = false
             if let host, let backend = self.resolvingBackend {
                 self.resolvedURL = self.buildURL(host: host, port: port, txt: backend.txt)
@@ -126,15 +134,19 @@ extension BackendBrowser: NetServiceDelegate {
                 self.resolveError = "Couldn't resolve host"
             }
             self.resolving = nil
+            self.resolvingId = nil
         }
     }
 
     nonisolated func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
+        let sid = ObjectIdentifier(sender)
         sender.stop()
         Task { @MainActor in
+            guard self.resolvingId == sid else { return }
             self.isResolving = false
             self.resolveError = "Resolve failed"
             self.resolving = nil
+            self.resolvingId = nil
         }
     }
 }

@@ -69,6 +69,7 @@ struct ConversationDetailView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task { await load() }
+        .onDisappear { player.stop() }
     }
 
     private func content(_ detail: HermesVoiceAPI.HistoryDetail) -> some View {

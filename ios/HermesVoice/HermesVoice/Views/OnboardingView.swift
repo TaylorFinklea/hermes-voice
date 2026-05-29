@@ -48,6 +48,14 @@ struct OnboardingView: View {
                 failed = false
             }
         }
+        .onChange(of: browser.resolveError) { _, err in
+            // Surface a failed Bonjour resolve instead of leaving the row
+            // spinning silently.
+            if let err, !err.isEmpty {
+                status = err
+                failed = true
+            }
+        }
     }
 
     private var header: some View {

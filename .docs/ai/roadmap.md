@@ -100,8 +100,8 @@ From the adversarially-verified review (40 kept / 34 confirmed; harness-deck rep
 ### From on-device testing (2026-05-29)
 
 - [x] History sheet stopped opening — FIXED (`efd121f`): three stacked `.sheet(isPresented:)` on MainView shadowed each other once the transcript sheet was added; collapsed to one `.sheet(item:)` enum.
-- [ ] **Turn hangs at "transcribing + dispatching to hermes" with no response/timeout** (reported on device; recording+upload succeeded, so it's server-side STT or `hermes.ask`). Needs backend-log diagnosis. Consider a client-side turn timeout + clear error so a hung turn surfaces instead of an indefinite spinner (today only URLSession's 60s default applies).
-- [ ] **Live tool-calls during thinking/sending** (feature request): stream tool-call events as Hermes emits them and render them in the pipeline UI (condensed, Hermes-like). Today tool-calls are audited only AFTER the turn (`fetch_tool_calls_since` post-`hermes.ask`). Needs backend streaming (SSE/WS or mid-turn session-DB polling) + client stream consumption; pairs with the typed-tool-output item above.
+- [x] **"Turn hangs"** — DIAGNOSED (2026-05-29): not a hang. STT (≤90s) and `hermes.ask` (≤180s) are both bounded, and the client times out at ~60s → `.error`. It was a *slow* Hermes turn (a trivial "list home dir" took 22s) with no live feedback + (now-fixed) broken barge-in, so it *felt* frozen. The real fix is live progress (below). (Optional future polish: a tighter client turn timeout + clearer message.)
+- [x] **Live tool-calls during thinking** — SHIPPED (Phase 2: `d6377cc` backend, `67a04a9` iOS, 2026-05-29). Validated that Hermes flushes tool previews to stdout incrementally through a pipe; backend runs non-`-Q` + streams `tool` events over SSE (`/api/text/stream`, `/api/audio/stream`), authoritative reply + tools from the session export; iOS consumes the SSE and renders chips live in the thinking pane, with single-shot fallback. Spec + status: `.docs/ai/phases/live-progress-convo-control-spec.md`. **On-device test pending.**
 
 ## Constraints
 

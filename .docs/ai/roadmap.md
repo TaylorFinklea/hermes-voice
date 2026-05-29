@@ -58,6 +58,45 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 
 **Status**: Scoped — see `.docs/ai/phases/schedules-spec.md` for full spec. Phase A is the next executable chunk.
 
+### Bug + architecture review findings (2026-05-29)
+
+From the adversarially-verified review (40 kept / 34 confirmed; harness-deck report `20260529-bug-arch-review`; full data in workflow output `wf42mvxx6`). `voice_id` path-injection already fixed (`0deab6a`).
+
+**Quick wins (localized, high-confidence):**
+- [ ] `schedules.py` — in-flight id set so a slow (>5s) Hermes turn isn't re-fired every 5s tick (~36× duplicate subprocesses/pushes). **Top bug.**
+- [ ] `main.py:98-104` — lifespan: cancel executor before mDNS teardown; wrap `stop_mdns` in its own try/except.
+- [ ] `main.py:424` + `schedules.py:521` — keep `create_task` refs in a set + `add_done_callback(discard)` (GC-cancellation guard).
+- [ ] `ConversationDetailView` — `.onDisappear { player.stop() }`.
+- [ ] `models.py` — `DeviceRegisterRequest.token` pattern `^[0-9a-fA-F]{64}$`.
+- [ ] `schedules.py:_connect` — `PRAGMA journal_mode=WAL` + `busy_timeout`.
+- [ ] `OnboardingView` — observe `browser.resolveError`; surface it.
+- [ ] `BackendBrowser` — generation id on resolve so a stale callback can't overwrite the URL.
+
+**Audio-session coordination cluster (related Medium bugs — best fixed together via one ref-counted session coordinator):**
+- [ ] `AudioPlayer.finish()` doesn't deactivate the session / release observers on natural completion (leaks ducking between turns).
+- [ ] `VoiceRecorder.stop()` unconditionally deactivates the shared session (barge-in yanks it from an overlapping player/chime).
+- [ ] Foreground scheduled-arrival auto-play uses a throwaway `AudioPlayer` that fights the VM player + double-drives Live Activity (route through the shared VM/player).
+- [ ] Barge-in during `.sending/.thinking` — `handle()`/`play()` not cancellation/generation-aware (likely; can clobber a new recording).
+
+**Other confirmed:**
+- [ ] Streaming-TTS producer blocks forever / leaks the ElevenLabs connection if no consumer drains the queue (`main.py:404-425`; + `audio_store` eviction should cancel the producer).
+- [ ] HeroPane renders the reply twice when a `.bullets` ActionCard is detected (strip card-consumed lines).
+- [ ] `AudioStore` — no TTL/disk cleanup; temp dir leaks each restart (lifespan `rmtree` + TTL sweep).
+- [ ] `PhoneWatchBridge` keeps a divergent `AppSettings()` copy → stale watch settings (single shared settings).
+- [ ] Bullets ActionCard over-triggers on dashed/numbered prose (tighten heuristic).
+
+**Security hardening (needs product decision):**
+- [ ] `/health` unauthenticated + discloses provider/runtime config — gate behind token OR trim to `{status, mock}` (affects the Settings diagnostics view + onboarding test-connection; decide first).
+- [ ] Auth token optional while launchd binds `0.0.0.0` — fail closed on non-loopback bind with empty token, or document the token as mandatory.
+
+**Architecture (needs design + prioritization):**
+- [ ] Extract a `TurnPipeline`/`HermesTurnService` from the `ConversationViewModel` god-object (and make it testable).
+- [ ] Inject one `BackendClient` instead of ad-hoc `HermesVoiceAPI(...)` in ~8 sites.
+- [ ] Add an iOS test target (start with `pairedTurns`, decoders, VM transitions).
+- [ ] Long-lived per-provider `httpx.AsyncClient` (TLS reuse) for TTS/STT/MCP.
+- [ ] `Semaphore(2-3)` around `_fire_one`; text-only path flag for scheduled fires.
+- [ ] Typed tool-output schema (unblocks richer ActionCard variants).
+
 ## Constraints
 
 - iOS 17+ / watchOS 10+

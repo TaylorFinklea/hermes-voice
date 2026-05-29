@@ -31,17 +31,18 @@ class TTSResult:
 class TTSProvider(Protocol):
     name: str
 
-    async def synthesize(self, text: str) -> TTSResult: ...
+    async def synthesize(self, text: str, voice_id: str | None = None) -> TTSResult: ...
 
     def describe(self) -> dict: ...
 
-    async def stream(self, text: str) -> AsyncIterator[bytes]:
+    async def stream(self, text: str, voice_id: str | None = None) -> AsyncIterator[bytes]:
         """Yield audio chunks as they're synthesized.
 
         Default fallback: calls synthesize() and yields the whole thing
-        as one chunk. Override for real streaming.
+        as one chunk. Override for real streaming. `voice_id` overrides the
+        provider's default voice when supported (ElevenLabs); others ignore it.
         """
-        result = await self.synthesize(text)
+        result = await self.synthesize(text, voice_id=voice_id)
         yield result.audio
 
     @property

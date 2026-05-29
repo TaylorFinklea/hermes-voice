@@ -34,8 +34,8 @@ class PiperTTS:
     stream_extension = ".wav"
     stream_mime = "audio/wav"
 
-    async def stream(self, text: str):
-        result = await self.synthesize(text)
+    async def stream(self, text: str, voice_id: str | None = None):
+        result = await self.synthesize(text, voice_id=voice_id)
         yield result.audio
 
     def __init__(self, voice_path: str):
@@ -48,7 +48,7 @@ class PiperTTS:
     def describe(self) -> dict:
         return {"name": self.name, "voice_path": str(self._path)}
 
-    async def synthesize(self, text: str) -> TTSResult:
+    async def synthesize(self, text: str, voice_id: str | None = None) -> TTSResult:
         return await asyncio.to_thread(self._synthesize_sync, text)
 
     def _synthesize_sync(self, text: str) -> TTSResult:

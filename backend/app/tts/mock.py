@@ -32,8 +32,8 @@ class MockTTS:
     def describe(self) -> dict:
         return {"name": self.name, "format": "silent_wav"}
 
-    async def synthesize(self, text: str) -> TTSResult:
+    async def synthesize(self, text: str, voice_id: str | None = None) -> TTSResult:
         return TTSResult(audio=self._audio, mime="audio/wav", extension=".wav")
 
-    async def stream(self, text: str):
+    async def stream(self, text: str, voice_id: str | None = None):
         yield self._audio

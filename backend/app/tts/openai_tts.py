@@ -19,11 +19,11 @@ class OpenAITTS:
     def describe(self) -> dict:
         return {"name": self.name, "model": self._model, "voice": self._voice}
 
-    async def stream(self, text: str):
-        result = await self.synthesize(text)
+    async def stream(self, text: str, voice_id: str | None = None):
+        result = await self.synthesize(text, voice_id=voice_id)
         yield result.audio
 
-    async def synthesize(self, text: str) -> TTSResult:
+    async def synthesize(self, text: str, voice_id: str | None = None) -> TTSResult:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 "https://api.openai.com/v1/audio/speech",

@@ -53,20 +53,22 @@ class ElevenLabsTTS:
             "Content-Type": "application/json",
         }
 
-    async def synthesize(self, text: str) -> TTSResult:
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{self._voice}"
+    async def synthesize(self, text: str, voice_id: str | None = None) -> TTSResult:
+        voice = voice_id or self._voice
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}"
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(url, headers=self._headers(), json=self._body(text))
         resp.raise_for_status()
         return TTSResult(audio=resp.content, mime="audio/mpeg", extension=".mp3")
 
-    async def stream(self, text: str) -> AsyncIterator[bytes]:
+    async def stream(self, text: str, voice_id: str | None = None) -> AsyncIterator[bytes]:
         """HTTP-streaming MP3 from ElevenLabs `/stream` endpoint.
 
         Yields chunks as ElevenLabs produces them, which is roughly real-time:
         first chunk lands in ~200-400ms, subsequent chunks at speech-rate.
         """
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{self._voice}/stream"
+        voice = voice_id or self._voice
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}/stream"
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream(
                 "POST", url, headers=self._headers(), json=self._body(text)

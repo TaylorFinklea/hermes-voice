@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field  # noqa: F401  (Field used below)
 class TextRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=4000)
     session_id: str | None = None
+    voice_id: str | None = Field(default=None, max_length=80)
 
 
 class ToolCallSummary(BaseModel):
@@ -56,10 +57,18 @@ class SessionDetailResponse(BaseModel):
 
 class ReplayRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=4000)
+    voice_id: str | None = Field(default=None, max_length=80)
 
 
 class ReplayResponse(BaseModel):
     audio_url: str | None
+
+
+class VoiceItem(BaseModel):
+    """One selectable TTS voice (ElevenLabs catalog)."""
+    voice_id: str
+    name: str
+    category: str | None = None
 
 
 class HealthResponse(BaseModel):

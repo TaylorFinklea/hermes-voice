@@ -47,12 +47,12 @@ class FakeTTS:
     def describe(self) -> dict:
         return {"name": self.name}
 
-    async def synthesize(self, text: str) -> TTSResult:
+    async def synthesize(self, text: str, voice_id: str | None = None) -> TTSResult:
         self.calls.append(text)
         # 4 bytes of fake audio — enough to round-trip through the store.
         return TTSResult(audio=b"FAKE", mime="audio/wav", extension=".wav")
 
-    async def stream(self, text: str):
+    async def stream(self, text: str, voice_id: str | None = None):
         self.calls.append(text)
         # Emit in two chunks to exercise the streaming path.
         yield b"FA"

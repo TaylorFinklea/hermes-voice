@@ -40,6 +40,7 @@ from .models import (
     TextRequest,
     ToolCallSummary,
     TurnResponse,
+    VoiceItem,
 )
 from .session_audit import fetch_tool_calls_since
 from .sessions import get_session, list_sessions
@@ -164,7 +165,9 @@ def _register_routes(app: FastAPI) -> None:
         dependencies=[Depends(_require_token)],
     )
     async def text_turn(body: TextRequest) -> TurnResponse:
-        return await _run_turn(app, user_text=body.text, session_id=body.session_id)
+        return await _run_turn(
+            app, user_text=body.text, session_id=body.session_id, voice_id=body.voice_id
+        )
 
     @app.post(
         "/api/audio",
@@ -174,6 +177,7 @@ def _register_routes(app: FastAPI) -> None:
     async def audio_turn(
         file: Annotated[UploadFile, File()],
         session_id: Annotated[str | None, Form()] = None,
+        voice_id: Annotated[str | None, Form()] = None,
     ) -> TurnResponse:
         stt: STTProvider | None = app.state.stt
         if stt is None:
@@ -195,7 +199,9 @@ def _register_routes(app: FastAPI) -> None:
         if not user_text:
             raise HTTPException(status_code=422, detail="no speech detected")
 
-        return await _run_turn(app, user_text=user_text, session_id=session_id)
+        return await _run_turn(
+            app, user_text=user_text, session_id=session_id, voice_id=voice_id
+        )
 
     @app.get(
         "/api/sessions",
@@ -282,11 +288,33 @@ def _register_routes(app: FastAPI) -> None:
                 status_code=503, detail="No TTS provider configured."
             )
         try:
-            audio_url = _start_stream(app, tts, body.text)
+            audio_url = _start_stream(app, tts, body.text, voice_id=body.voice_id)
         except Exception as e:
             logger.warning("replay tts error: %s", e)
             raise HTTPException(status_code=502, detail=f"tts failed: {e}") from e
         return ReplayResponse(audio_url=audio_url)
+
+    @app.get(
+        "/api/voices",
+        response_model=list[VoiceItem],
+        dependencies=[Depends(_require_token)],
+    )
+    async def list_voices() -> list[VoiceItem]:
+        """Selectable TTS voices for the active provider (ElevenLabs only today).
+
+        Returns [] for providers without a voice catalog (mock/openai/piper) so
+        the iOS picker can just fall back to the server default.
+        """
+        tts: TTSProvider | None = app.state.tts
+        fetch = getattr(tts, "list_voices", None)
+        if tts is None or fetch is None:
+            return []
+        try:
+            voices = await fetch()
+        except Exception as e:
+            logger.warning("voice list failed: %s", e)
+            raise HTTPException(status_code=502, detail=f"voice list failed: {e}") from e
+        return [VoiceItem(**v) for v in voices]
 
     @app.get(
         "/api/schedules",
@@ -401,7 +429,9 @@ def _register_routes(app: FastAPI) -> None:
         return FileResponse(path, media_type=media)
 
 
-def _start_stream(app: FastAPI, tts: TTSProvider, text: str) -> str:
+def _start_stream(
+    app: FastAPI, tts: TTSProvider, text: str, voice_id: str | None = None
+) -> str:
     """Kick off a background streaming-TTS task and return the audio URL.
 
     The HTTP response can come back to iOS before any audio is synthesized;
@@ -412,7 +442,7 @@ def _start_stream(app: FastAPI, tts: TTSProvider, text: str) -> str:
 
     async def producer() -> None:
         try:
-            async for chunk in tts.stream(text):
+            async for chunk in tts.stream(text, voice_id=voice_id):
                 if chunk:
                     await queue.put(chunk)
         except Exception as e:
@@ -439,7 +469,9 @@ async def _read_capped(file: UploadFile, cap: int) -> bytes:
     return b"".join(chunks)
 
 
-async def _run_turn(app: FastAPI, *, user_text: str, session_id: str | None) -> TurnResponse:
+async def _run_turn(
+    app: FastAPI, *, user_text: str, session_id: str | None, voice_id: str | None = None
+) -> TurnResponse:
     import time
 
     hermes: HermesClient = app.state.hermes
@@ -467,7 +499,7 @@ async def _run_turn(app: FastAPI, *, user_text: str, session_id: str | None) -> 
         try:
             # IMPORTANT: only the assistant prose is synthesized. Tool calls
             # are never spoken — they're for visual auditing only.
-            audio_url = _start_stream(app, tts, reply.text)
+            audio_url = _start_stream(app, tts, reply.text, voice_id=voice_id)
         except Exception as e:
             logger.warning("tts setup error (returning text-only): %s", e)
 

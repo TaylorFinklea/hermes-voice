@@ -104,8 +104,15 @@ final class ConversationViewModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 50_000_000)
             await startRecording()
         case .thinking, .sending:
+            // Cancel the in-flight turn and drop to .idle BEFORE startRecording()
+            // — its guard only proceeds from .idle/.error, so without this the
+            // barge-in was silently swallowed and the UI stuck on Sending/Thinking
+            // (the .speaking arm gets to .idle implicitly via player.stop()→handle).
+            // The cancelled turn's task unwinds via CancellationError without
+            // touching state, so it can't clobber the new recording.
             currentTurn?.cancel()
             currentTurn = nil
+            state = .idle
             await startRecording()
         case .idle, .error:
             await startRecording()

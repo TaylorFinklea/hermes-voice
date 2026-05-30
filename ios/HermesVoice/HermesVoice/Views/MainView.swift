@@ -3,7 +3,9 @@ import SwiftUI
 struct MainView: View {
     @EnvironmentObject var conversation: ConversationViewModel
     @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var conversationMode: ConversationModeController
     @StateObject private var notifications = NotificationManager.shared
+    @Environment(\.scenePhase) private var scenePhase
     @State private var activeSheet: ActiveSheet?
     @State private var textInput = ""
     @State private var typingMode = false
@@ -42,15 +44,7 @@ struct MainView: View {
                         onTapTurn: { activeSheet = .transcript }
                     )
 
-                    ScrollView {
-                        HeroPane(
-                            textInput: $textInput,
-                            isTyping: $typingMode,
-                            onSendText: sendText
-                        )
-                        .padding(.bottom, 180)
-                    }
-                    .scrollIndicators(.hidden)
+                    heroScroll
                 }
                 .padding(.top, 4)
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: notifications.lastScheduledArrival)
@@ -87,9 +81,39 @@ struct MainView: View {
                         .environmentObject(conversation)
                 }
             }
+            .onChange(of: scenePhase) { _, newPhase in
+                // No background mic: leaving the foreground exits hands-free mode.
+                if newPhase != .active && conversationMode.isActive {
+                    conversationMode.stop()
+                }
+            }
+            .alert("Conversation mode", isPresented: Binding(
+                get: { conversationMode.errorMessage != nil },
+                set: { if !$0 { conversationMode.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { conversationMode.errorMessage = nil }
+            } message: {
+                Text(conversationMode.errorMessage ?? "")
+            }
         }
         .tint(HVColor.amber)
         .preferredColorScheme(.dark)
+    }
+
+    private var heroScroll: some View {
+        ScrollView {
+            // In hands-free mode, the listening pane replaces the hero while we
+            // wait for the user; once a turn starts (.turn) the normal
+            // thinking/speaking hero takes over.
+            if conversationMode.phase == .listening {
+                HeroListeningHandsFree(capture: conversationMode.capture)
+                    .padding(.bottom, 180)
+            } else {
+                HeroPane(textInput: $textInput, isTyping: $typingMode, onSendText: sendText)
+                    .padding(.bottom, 180)
+            }
+        }
+        .scrollIndicators(.hidden)
     }
 
     @ToolbarContentBuilder
@@ -114,6 +138,14 @@ struct MainView: View {
             }
             .disabled(!canStartNewConversation)
             .accessibilityLabel("New conversation")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { conversationMode.toggle() } label: {
+                Image(systemName: conversationMode.isActive
+                      ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right")
+                    .foregroundStyle(conversationMode.isActive ? HVColor.amber : HVColor.bronze)
+            }
+            .accessibilityLabel(conversationMode.isActive ? "End conversation mode" : "Start conversation mode")
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button { activeSheet = .settings } label: {
@@ -293,6 +325,7 @@ private struct ContinuingPill: View {
 
 struct BottomDock: View {
     @EnvironmentObject var conversation: ConversationViewModel
+    @EnvironmentObject var conversationMode: ConversationModeController
     @Binding var textInput: String
     @Binding var typingMode: Bool
 
@@ -307,7 +340,9 @@ struct BottomDock: View {
             .allowsHitTesting(false)
 
             HStack(spacing: 18) {
-                if conversation.state == .speaking {
+                if conversationMode.isActive {
+                    ConversationModeDock()
+                } else if conversation.state == .speaking {
                     PlaybackTransport()
                 } else {
                     DockSideButton(
@@ -419,6 +454,47 @@ private struct PlaybackTransport: View {
             .buttonStyle(.plain)
             .disabled(true)
         }
+    }
+}
+
+// MARK: - Conversation-mode dock
+
+/// Bottom dock while hands-free conversation mode is active: a phase-aware
+/// center button (tap = barge-in: cut the reply and listen again) and an End
+/// button. The mic gesture / push-to-talk dock is untouched and reappears when
+/// conversation mode is off.
+private struct ConversationModeDock: View {
+    @EnvironmentObject var conversationMode: ConversationModeController
+
+    var body: some View {
+        HStack(spacing: 18) {
+            Color.clear.frame(width: 44, height: 44)   // balance the End button
+
+            Button(action: { conversationMode.bargeIn() }) {
+                ZStack {
+                    Circle().fill(centerFill).frame(width: 76, height: 76)
+                    Circle().strokeBorder(centerFill.opacity(0.18), lineWidth: 4)
+                        .frame(width: 84, height: 84)
+                    Image(systemName: centerIcon)
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(HVColor.bg)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(conversationMode.phase == .turn ? "Interrupt and listen" : "Listening")
+
+            DockSideButton(systemName: "xmark", tint: HVColor.creamDim) {
+                conversationMode.stop()
+            }
+            .accessibilityLabel("End conversation")
+        }
+    }
+
+    private var centerIcon: String {
+        conversationMode.phase == .turn ? "stop.fill" : "waveform"
+    }
+    private var centerFill: Color {
+        conversationMode.phase == .turn ? HVColor.gold : HVColor.amber
     }
 }
 

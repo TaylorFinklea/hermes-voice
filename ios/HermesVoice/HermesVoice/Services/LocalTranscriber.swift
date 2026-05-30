@@ -93,9 +93,15 @@ final class LocalTranscriber: ObservableObject {
     /// Decodes to 16 kHz mono float32, then runs Parakeet. Throws if the model
     /// can't load or inference fails — the caller falls back to audio upload.
     func transcribe(audioFileURL url: URL) async throws -> String {
-        let manager = try await ensureManager()
         let samples = try Self.readSamples(at: url)
+        return try await transcribe(samples: samples)
+    }
+
+    /// Transcribe already-decoded 16 kHz mono float samples — the form the
+    /// hands-free VAD capture loop produces in memory (no file round-trip).
+    func transcribe(samples: [Float]) async throws -> String {
         guard !samples.isEmpty else { return "" }
+        let manager = try await ensureManager()
         // Size the decoder state to the *loaded* model. parakeet v2 uses 2 LSTM
         // layers; a bare `TdtDecoderState()` hardcodes 2 and throws a CoreML
         // shape mismatch if the model disagrees. Mirrors FluidAudio's own

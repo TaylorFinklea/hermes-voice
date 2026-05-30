@@ -24,6 +24,7 @@
 		55CA215F488D2D9567515BB8 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91BFA86135F9155F4B15C6ED /* AppDelegate.swift */; };
 		59704D53AD1D886AB38970DA /* VoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E5656D26B4AA84AEC2D2C91 /* VoiceRecorder.swift */; };
 		5B513B4C2389EF68D0EA5929 /* WatchPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98056B3047C8E9486B041995 /* WatchPlayer.swift */; };
+		5D15577B92438F415F0FF766 /* LocalVad.swift in Sources */ = {isa = PBXBuildFile; fileRef = D837F79DE04128F22CC3C057 /* LocalVad.swift */; };
 		5EBA33362E4F96514827A2F6 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F5107EB40D7F7FFED269FED /* HistoryView.swift */; };
 		602D649F831D9569F2670F42 /* LocalTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 506CD3DFC00ECED6AA2941B4 /* LocalTranscriber.swift */; };
 		6407D34427795A67562C685F /* HermesVoiceWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0607EA95518EA19F6E5242C3 /* HermesVoiceWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -35,6 +36,7 @@
 		8A22DCC4A0C9B7114A1D91C7 /* SchedulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD0611B5E35BB66D8E090EE /* SchedulesView.swift */; };
 		8B1D926D5BAB433FB8A570D1 /* Atoms.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2667D0C94428D99A956948D /* Atoms.swift */; };
 		8DFF9B2D9AF9974BAC9E1495 /* ActionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C333A49C789676D5541D80BA /* ActionCard.swift */; };
+		938A385F9328247E99D2D233 /* ConversationCaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A7B39A6513FE4F8FB7F9075 /* ConversationCaptureEngine.swift */; };
 		A52398B744D8E740D17644A7 /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F301EE0D51AE7E6149CB6028 /* AudioPlayer.swift */; };
 		B14807A172CDC8E0AFAF07F5 /* HermesActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53A4809563E9438638E7D768 /* HermesActivityAttributes.swift */; };
 		B1E6B7D652D5A5ACBCC744CD /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C4276ABED593A1B47F0F329 /* OnboardingView.swift */; };
@@ -47,6 +49,7 @@
 		C98B8C1A809EFE9B7FE1B52D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1BB36C624F8D38FFA22276A /* SettingsView.swift */; };
 		D3EDAF70395A41A1A1F4DC51 /* ConversationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95073D71B1247389D55E2E90 /* ConversationViewModel.swift */; };
 		D82FDDCEA23FAA5D660D1429 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7F48F66BDE7FEFB5F8D93B14 /* Assets.xcassets */; };
+		D94DF2F83579D5B051A70FBE /* ConversationModeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 819511910350506C883E1FED /* ConversationModeController.swift */; };
 		DC0CFEA4BF16C8B3DC24F2AB /* AudioSessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715C6CEBF378666AD02ABB56 /* AudioSessionCoordinator.swift */; };
 		DD0E5FD5C37D4FBC9285656C /* WatchBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDB54EB974B32236A59EBB0B /* WatchBrand.swift */; };
 		DDD1F11B34F9B3926A630505 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 98913E2AE1777903CEF0FDAF /* Assets.xcassets */; };
@@ -117,8 +120,10 @@
 		71159F3B5BD1FDDED47FF2ED /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		715C6CEBF378666AD02ABB56 /* AudioSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionCoordinator.swift; sourceTree = "<group>"; };
 		76D461D25CE61518A627C832 /* HermesVoice.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesVoice.entitlements; sourceTree = "<group>"; };
+		7A7B39A6513FE4F8FB7F9075 /* ConversationCaptureEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationCaptureEngine.swift; sourceTree = "<group>"; };
 		7F48F66BDE7FEFB5F8D93B14 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		80CE6099662D4FB382235DF9 /* WatchSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSession.swift; sourceTree = "<group>"; };
+		819511910350506C883E1FED /* ConversationModeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationModeController.swift; sourceTree = "<group>"; };
 		8E038B022A79A275C21BB70B /* HermesVoiceAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesVoiceAPI.swift; sourceTree = "<group>"; };
 		91BFA86135F9155F4B15C6ED /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		92A69BCA5084B9B9B056B8C1 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
@@ -136,6 +141,7 @@
 		BD3A44595552D66831328B5A /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		C333A49C789676D5541D80BA /* ActionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionCard.swift; sourceTree = "<group>"; };
 		C8BF5658062204896A597F67 /* WatchRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRecorder.swift; sourceTree = "<group>"; };
+		D837F79DE04128F22CC3C057 /* LocalVad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalVad.swift; sourceTree = "<group>"; };
 		D84A69132372FE451302742E /* HermesVoice.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HermesVoice.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DBD27C5179FB969C4909958A /* HermesVoiceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesVoiceApp.swift; sourceTree = "<group>"; };
 		DD20A90C8B53ADF46EBD18FA /* hermes-chime.caf */ = {isa = PBXFileReference; path = "hermes-chime.caf"; sourceTree = "<group>"; };
@@ -228,6 +234,7 @@
 		88C760F49978255F94466B0B /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				819511910350506C883E1FED /* ConversationModeController.swift */,
 				95073D71B1247389D55E2E90 /* ConversationViewModel.swift */,
 			);
 			path = ViewModels;
@@ -315,10 +322,12 @@
 				715C6CEBF378666AD02ABB56 /* AudioSessionCoordinator.swift */,
 				58B9A5FC3DB9A7AB2383F5ED /* BackendBrowser.swift */,
 				9FB3B7188CD4A6892599F80E /* ChimePlayer.swift */,
+				7A7B39A6513FE4F8FB7F9075 /* ConversationCaptureEngine.swift */,
 				8E038B022A79A275C21BB70B /* HermesVoiceAPI.swift */,
 				F10E963463B97606F132C982 /* LiveActivityController.swift */,
 				1C8442F3F4BB38C203C77F24 /* LocalSpeaker.swift */,
 				506CD3DFC00ECED6AA2941B4 /* LocalTranscriber.swift */,
+				D837F79DE04128F22CC3C057 /* LocalVad.swift */,
 				71159F3B5BD1FDDED47FF2ED /* NotificationManager.swift */,
 				E262A46EED41E59D516CD6EB /* PhoneWatchBridge.swift */,
 				9E5656D26B4AA84AEC2D2C91 /* VoiceRecorder.swift */,
@@ -478,7 +487,9 @@
 				FA56CD4C25935FB38735B2AB /* BackendBrowser.swift in Sources */,
 				C162BAFCDD77E8588F5CC0E3 /* Brand.swift in Sources */,
 				C3B835239AD589D5462B1727 /* ChimePlayer.swift in Sources */,
+				938A385F9328247E99D2D233 /* ConversationCaptureEngine.swift in Sources */,
 				6D7510453A27D2B636F7ED1E /* ConversationDetailView.swift in Sources */,
+				D94DF2F83579D5B051A70FBE /* ConversationModeController.swift in Sources */,
 				D3EDAF70395A41A1A1F4DC51 /* ConversationViewModel.swift in Sources */,
 				15148B8107ACE29F3540A0EF /* HermesActivityAttributes.swift in Sources */,
 				46C818DC6D454855A645307D /* HermesVoiceAPI.swift in Sources */,
@@ -488,6 +499,7 @@
 				112A641E9BAB5EF32CF2887B /* LiveActivityController.swift in Sources */,
 				316C9FEA01ACD9DD3D0B836C /* LocalSpeaker.swift in Sources */,
 				602D649F831D9569F2670F42 /* LocalTranscriber.swift in Sources */,
+				5D15577B92438F415F0FF766 /* LocalVad.swift in Sources */,
 				0AA8C39365DB851D04C7582E /* MainView.swift in Sources */,
 				3D3CEBD0C0B5596F50E6E865 /* Message.swift in Sources */,
 				0C61B425F45DCF8A09D475DC /* NotificationManager.swift in Sources */,

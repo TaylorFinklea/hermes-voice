@@ -552,3 +552,56 @@ struct Waveform: View {
         return max(3, CGFloat(abs(base + envelope) + 4))
     }
 }
+
+// MARK: - Hands-free listening (conversation mode)
+
+/// The hero while hands-free conversation mode is waiting for you. Unlike the
+/// press-to-talk `HeroListens` (faked waveform), this shows a *real* VAD-driven
+/// amplitude from the capture engine — the honest "I can hear you" cue that
+/// matters most in a no-button loop.
+struct HeroListeningHandsFree: View {
+    @ObservedObject var capture: ConversationCaptureEngine
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                Circle().fill(HVColor.amber).frame(width: 6, height: 6)
+                Text(capture.phase == .speech ? "HEARING YOU" : "LISTENING")
+                    .font(HVFont.captionTiny.weight(.semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(HVColor.amber)
+                Spacer()
+            }
+
+            LiveWaveform(monitor: capture.levelMonitor)
+                .frame(height: 56)
+
+            Text(capture.phase == .speech ? "go on…" : "listening…")
+                .font(HVFont.heroSpeak)
+                .foregroundStyle(HVColor.amber)
+
+            Text("Speak naturally, then pause — I'll reply, then listen again. Tap ✕ to end.")
+                .font(HVFont.captionTiny)
+                .tracking(0.4)
+                .foregroundStyle(HVColor.creamDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Waveform driven by real mic RMS levels (0…1) from `AudioLevelMonitor`.
+private struct LiveWaveform: View {
+    @ObservedObject var monitor: AudioLevelMonitor
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 3) {
+            ForEach(Array(monitor.levels.enumerated()), id: \.offset) { _, level in
+                Capsule()
+                    .fill(HVColor.amber)
+                    .frame(width: 3, height: max(3, CGFloat(level) * 52))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeOut(duration: 0.08), value: monitor.levels)
+    }
+}

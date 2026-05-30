@@ -20,6 +20,7 @@ struct SettingsView: View {
 
     @StateObject private var transcriber = LocalTranscriber.shared
     @StateObject private var speaker = LocalSpeaker.shared
+    @StateObject private var vad = LocalVad.shared
 
     var body: some View {
         NavigationStack {
@@ -33,6 +34,7 @@ struct SettingsView: View {
                     voiceSection
                     onDeviceVoiceSection
                     transcriptionSection
+                    listeningSection
                     modeSection
                     watchSection
                     diagnosticsSection
@@ -322,6 +324,57 @@ struct SettingsView: View {
             sectionHeader("ON-DEVICE TRANSCRIPTION")
         } footer: {
             Text("Runs parakeet-v2 on this iPhone — your audio never leaves the device and there's no upload wait. Downloaded once (~450 MB) and cached on-device. When off, or before download, mic turns upload audio for server transcription instead.")
+                .font(HVFont.captionTiny)
+                .foregroundStyle(HVColor.creamDim)
+        }
+    }
+
+    @ViewBuilder
+    private var listeningSection: some View {
+        Section {
+            switch vad.state {
+            case .notDownloaded:
+                Button {
+                    Task { await vad.prepare() }
+                } label: {
+                    HStack {
+                        Text("Download listening model")
+                            .font(HVFont.body)
+                            .foregroundStyle(HVColor.amber)
+                        Spacer()
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(HVColor.amber)
+                    }
+                }
+                .listRowBackground(HVColor.amberGlow.opacity(0.5))
+            case .downloading:
+                HStack(spacing: 8) {
+                    ProgressView().tint(HVColor.amber)
+                    Text("Downloading VAD…")
+                        .font(HVFont.body)
+                        .foregroundStyle(HVColor.cream)
+                }
+                .listRowBackground(HVColor.creamSurface)
+            case .ready:
+                HVKVRow(label: "Listening model", value: "Silero VAD · ready", accent: HVColor.amber)
+            case .failed(let msg):
+                Text(msg)
+                    .font(HVFont.captionTiny)
+                    .foregroundStyle(HVColor.bronze)
+                    .listRowBackground(HVColor.creamSurface)
+                Button {
+                    Task { await vad.prepare() }
+                } label: {
+                    Text("Retry download")
+                        .font(HVFont.body)
+                        .foregroundStyle(HVColor.amber)
+                }
+                .listRowBackground(HVColor.amberGlow.opacity(0.5))
+            }
+        } header: {
+            sectionHeader("HANDS-FREE LISTENING (VAD)")
+        } footer: {
+            Text("Powers hands-free conversation mode (the speech-bubble button in the top bar): detects when you've finished talking, on-device. Download once. Needs an on-device voice (Kokoro) for the reply.")
                 .font(HVFont.captionTiny)
                 .foregroundStyle(HVColor.creamDim)
         }

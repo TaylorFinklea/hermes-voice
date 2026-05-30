@@ -120,7 +120,8 @@ private struct HeroFirstLaunch: View {
 private struct HeroListens: View {
     @EnvironmentObject var conversation: ConversationViewModel
     @State private var elapsed: TimeInterval = 0
-    private let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+    @State private var levels: [Float] = Array(repeating: 0, count: 48)
+    private let timer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -133,7 +134,9 @@ private struct HeroListens: View {
                     .foregroundStyle(HVColor.amber)
             }
 
-            Waveform(active: true)
+            // Real mic-level waveform (from the recorder's meter), so it tracks
+            // your actual voice — same as hands-free mode.
+            RealWaveform(levels: levels)
                 .frame(height: 56)
 
             Text("listening…")
@@ -147,6 +150,10 @@ private struct HeroListens: View {
         }
         .onReceive(timer) { _ in
             elapsed = conversation.elapsedRecordingTime
+            var next = levels
+            next.removeFirst()
+            next.append(conversation.currentInputLevel)
+            levels = next
         }
     }
 
@@ -389,12 +396,19 @@ private struct HeroError: View {
     let message: String
     @EnvironmentObject var conversation: ConversationViewModel
 
+    /// A turn timeout means Hermes (the agent on the Mac) was too slow — the
+    /// backend itself is reachable. Don't mislabel that as "offline".
+    private var isTimeout: Bool {
+        message.localizedCaseInsensitiveContains("timed out")
+            || message.localizedCaseInsensitiveContains("timeout")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 HStack(spacing: 6) {
                     Circle().fill(HVColor.dangerSoft).frame(width: 6, height: 6)
-                    Text("HERMES OFFLINE")
+                    Text(isTimeout ? "HERMES SLOW" : "HERMES OFFLINE")
                         .font(HVFont.chip)
                         .tracking(0.7)
                         .foregroundStyle(HVColor.dangerSoft)
@@ -411,10 +425,12 @@ private struct HeroError: View {
                     Text("!").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Backend unreachable.")
+                    Text(isTimeout ? "Hermes didn't reply in time." : "Backend unreachable.")
                         .font(HVFont.caption.weight(.semibold))
                         .foregroundStyle(HVColor.cream)
-                    Text(message)
+                    Text(isTimeout
+                         ? "The backend answered (ping + history work), but the agent was slow or stuck. Tap retry, or check Hermes on your Mac."
+                         : message)
                         .font(HVFont.captionTiny)
                         .foregroundStyle(HVColor.creamDim)
                         .lineLimit(3)
@@ -589,19 +605,27 @@ struct HeroListeningHandsFree: View {
     }
 }
 
-/// Waveform driven by real mic RMS levels (0…1) from `AudioLevelMonitor`.
+/// Hands-free waveform: observes the `AudioLevelMonitor` and renders the shared
+/// `RealWaveform` from its live levels.
 private struct LiveWaveform: View {
     @ObservedObject var monitor: AudioLevelMonitor
+    var body: some View { RealWaveform(levels: monitor.levels) }
+}
+
+/// Bars driven by real mic levels (0…1). Shared by push-to-talk (`HeroListens`,
+/// recorder meter) and hands-free (`LiveWaveform`, VAD `AudioLevelMonitor`).
+struct RealWaveform: View {
+    let levels: [Float]
 
     var body: some View {
         HStack(alignment: .center, spacing: 3) {
-            ForEach(Array(monitor.levels.enumerated()), id: \.offset) { _, level in
+            ForEach(Array(levels.enumerated()), id: \.offset) { _, level in
                 Capsule()
                     .fill(HVColor.amber)
                     .frame(width: 3, height: max(3, CGFloat(level) * 52))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(.easeOut(duration: 0.08), value: monitor.levels)
+        .animation(.easeOut(duration: 0.08), value: levels)
     }
 }

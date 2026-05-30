@@ -46,6 +46,10 @@ final class ConversationViewModel: ObservableObject {
     /// truth; views poll this on a timer.
     var elapsedRecordingTime: TimeInterval { recorder.elapsed ?? 0 }
 
+    /// Live normalized mic level (0…1) while recording, for the push-to-talk
+    /// waveform. Views poll this on a timer.
+    var currentInputLevel: Float { recorder.currentLevel() }
+
     /// Most recent user-side text in the transcript (or nil).
     var lastUserText: String? {
         messages.last(where: { $0.role == .user })?.text

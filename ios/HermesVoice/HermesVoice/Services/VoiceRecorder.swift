@@ -32,6 +32,17 @@ final class VoiceRecorder: NSObject, AVAudioRecorderDelegate {
         return Date().timeIntervalSince(startedAt)
     }
 
+    /// Current normalized mic level (0…1) from the recorder's meter, for a live
+    /// waveform. 0 when not recording. Maps roughly -50 dBFS (quiet) … -5 dBFS
+    /// (loud) onto 0…1 so ordinary speech fills the meter without clipping.
+    func currentLevel() -> Float {
+        guard let recorder else { return 0 }
+        recorder.updateMeters()
+        let db = recorder.averagePower(forChannel: 0)
+        let clamped = max(-50, min(-5, db))
+        return Float((clamped + 50) / 45)
+    }
+
     /// Asks for mic permission if needed. Safe to call repeatedly.
     func requestPermission() async -> Bool {
         if #available(iOS 17.0, *) {

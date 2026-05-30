@@ -140,14 +140,6 @@ struct MainView: View {
             .accessibilityLabel("New conversation")
         }
         ToolbarItem(placement: .topBarTrailing) {
-            Button { conversationMode.toggle() } label: {
-                Image(systemName: conversationMode.isActive
-                      ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right")
-                    .foregroundStyle(conversationMode.isActive ? HVColor.amber : HVColor.bronze)
-            }
-            .accessibilityLabel(conversationMode.isActive ? "End conversation mode" : "Start conversation mode")
-        }
-        ToolbarItem(placement: .topBarTrailing) {
             Button { activeSheet = .settings } label: {
                 Image(systemName: "gearshape")
                     .foregroundStyle(HVColor.bronze)
@@ -340,37 +332,9 @@ struct BottomDock: View {
             .allowsHitTesting(false)
 
             HStack(spacing: 18) {
-                if conversationMode.isActive {
-                    ConversationModeDock()
-                } else if conversation.state == .speaking {
-                    PlaybackTransport()
-                } else {
-                    DockSideButton(
-                        systemName: typingMode ? "keyboard.fill" : "keyboard",
-                        tint: typingMode ? HVColor.amber : HVColor.creamDim
-                    ) {
-                        typingMode.toggle()
-                        if !typingMode { textInput = "" }
-                    }
-                    .accessibilityLabel("Toggle text input")
-
-                    PushToTalkButton()
-                        .opacity(typingMode ? 0.4 : 1.0)
-                        .allowsHitTesting(!typingMode)
-
-                    if isCancellable {
-                        DockSideButton(
-                            systemName: "xmark",
-                            tint: HVColor.creamDim,
-                            action: { conversation.cancelCurrentTurn() }
-                        )
-                        .accessibilityLabel("Cancel turn")
-                    } else {
-                        // Keep the mic centered. "New conversation" moved to the
-                        // top bar, so the dock X is cancel-only and hidden at rest.
-                        Color.clear.frame(width: 44, height: 44)
-                    }
-                }
+                leftControl
+                centerControl
+                rightControl
             }
             .padding(.horizontal, 22)
             .padding(.bottom, 30)
@@ -378,12 +342,57 @@ struct BottomDock: View {
         }
     }
 
-    /// The dock X is cancel-only now ("new conversation" moved to the top bar),
-    /// shown only when there's an in-flight turn to cut. (`.speaking` uses the
-    /// PlaybackTransport branch above, so this covers recording/sending/thinking.)
+    // Left: keyboard (one-shot) — hidden in hands-free.
+    @ViewBuilder private var leftControl: some View {
+        if conversationMode.isActive {
+            Color.clear.frame(width: 44, height: 44)
+        } else {
+            DockSideButton(
+                systemName: typingMode ? "keyboard.fill" : "keyboard",
+                tint: typingMode ? HVColor.amber : HVColor.creamDim
+            ) {
+                typingMode.toggle()
+                if !typingMode { textInput = "" }
+            }
+            .accessibilityLabel("Toggle text input")
+        }
+    }
+
+    // Center: the big button — push-to-talk mic (one-shot) or the hands-free
+    // barge-in/listening button.
+    @ViewBuilder private var centerControl: some View {
+        if conversationMode.isActive {
+            ConversationCenterButton()
+        } else {
+            PushToTalkButton()
+                .opacity(typingMode ? 0.4 : 1.0)
+                .allowsHitTesting(!typingMode)
+        }
+    }
+
+    // Right (next to the mic): the mode toggle at rest; the cancel/End X when
+    // there's something to stop.
+    @ViewBuilder private var rightControl: some View {
+        if conversationMode.isActive {
+            DockSideButton(systemName: "xmark", tint: HVColor.creamDim) {
+                conversationMode.stop()
+            }
+            .accessibilityLabel("End conversation")
+        } else if isCancellable {
+            DockSideButton(systemName: "xmark", tint: HVColor.creamDim) {
+                conversation.cancelCurrentTurn()
+            }
+            .accessibilityLabel("Cancel turn")
+        } else {
+            ModeToggleButton()
+        }
+    }
+
+    /// X is shown for any in-flight turn to cut — including `.speaking`, which
+    /// now stops via the X (the old back/forward transport was placeholder-only).
     private var isCancellable: Bool {
         switch conversation.state {
-        case .recording, .thinking, .sending: return true
+        case .recording, .thinking, .sending, .speaking: return true
         default: return false
         }
     }
@@ -412,82 +421,48 @@ private struct DockSideButton: View {
     }
 }
 
-private struct PlaybackTransport: View {
-    @EnvironmentObject var conversation: ConversationViewModel
+// MARK: - Mode toggle + hands-free center button
 
-    var body: some View {
-        HStack(spacing: 18) {
-            // Back: skip to start of reply (not implemented — placeholder
-            // for now; transport is mostly visual identity in speaks state).
-            Button(action: {}) {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(HVColor.creamDim)
-                    .frame(width: 50, height: 50)
-                    .background(Circle().fill(HVColor.creamSurface))
-            }
-            .buttonStyle(.plain)
-            .disabled(true)
-
-            // Stop: interrupts playback via the same path as the mic
-            // button's barge-in.
-            Button(action: { Task { await conversation.userPressedMic() } }) {
-                ZStack {
-                    Circle().fill(HVColor.gold).frame(width: 76, height: 76)
-                    Circle().strokeBorder(HVColor.gold.opacity(0.18), lineWidth: 4)
-                        .frame(width: 84, height: 84)
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(HVColor.bg)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Stop playback")
-
-            Button(action: {}) {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(HVColor.creamDim)
-                    .frame(width: 50, height: 50)
-                    .background(Circle().fill(HVColor.creamSurface))
-            }
-            .buttonStyle(.plain)
-            .disabled(true)
-        }
-    }
-}
-
-// MARK: - Conversation-mode dock
-
-/// Bottom dock while hands-free conversation mode is active: a phase-aware
-/// center button (tap = barge-in: cut the reply and listen again) and an End
-/// button. The mic gesture / push-to-talk dock is untouched and reappears when
-/// conversation mode is off.
-private struct ConversationModeDock: View {
+/// The mode toggle that sits next to the mic. Tap to switch between one-shot
+/// (push-to-talk) and hands-free conversation mode. Shown at rest; hands-free
+/// is exited via the dock's End (✕).
+private struct ModeToggleButton: View {
     @EnvironmentObject var conversationMode: ConversationModeController
 
     var body: some View {
-        HStack(spacing: 18) {
-            Color.clear.frame(width: 44, height: 44)   // balance the End button
-
-            Button(action: { conversationMode.bargeIn() }) {
-                ZStack {
-                    Circle().fill(centerFill).frame(width: 76, height: 76)
-                    Circle().strokeBorder(centerFill.opacity(0.18), lineWidth: 4)
-                        .frame(width: 84, height: 84)
-                    Image(systemName: centerIcon)
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundStyle(HVColor.bg)
-                }
+        Button { conversationMode.toggle() } label: {
+            ZStack {
+                Circle().fill(HVColor.creamSurface).frame(width: 44, height: 44)
+                Circle().strokeBorder(HVColor.hairline, lineWidth: 0.5).frame(width: 44, height: 44)
+                Image(systemName: "infinity")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(HVColor.creamDim)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(conversationMode.phase == .turn ? "Interrupt and listen" : "Listening")
-
-            DockSideButton(systemName: "xmark", tint: HVColor.creamDim) {
-                conversationMode.stop()
-            }
-            .accessibilityLabel("End conversation")
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Switch to hands-free mode")
+    }
+}
+
+/// The big center button while hands-free is active: a real-time waveform-style
+/// glyph while listening, a stop glyph during a reply (tap = barge-in: cut the
+/// reply and listen again).
+private struct ConversationCenterButton: View {
+    @EnvironmentObject var conversationMode: ConversationModeController
+
+    var body: some View {
+        Button(action: { conversationMode.bargeIn() }) {
+            ZStack {
+                Circle().fill(centerFill).frame(width: 76, height: 76)
+                Circle().strokeBorder(centerFill.opacity(0.18), lineWidth: 4)
+                    .frame(width: 84, height: 84)
+                Image(systemName: centerIcon)
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(HVColor.bg)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(conversationMode.phase == .turn ? "Interrupt and listen" : "Listening")
     }
 
     private var centerIcon: String {

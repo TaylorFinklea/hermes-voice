@@ -99,6 +99,7 @@ final class ConversationViewModel: ObservableObject {
             return  // already recording; ignore press, gesture handles release
         case .speaking:
             player.stop()
+            LocalSpeaker.shared.stop()   // also cut on-device Kokoro playback
             // Brief yield so the audio session deactivates before we
             // re-activate it for recording. Without this, .playAndRecord
             // can sometimes inherit dirty state from the prior .playback session.
@@ -139,7 +140,8 @@ final class ConversationViewModel: ObservableObject {
 
         let api = self.api
         let currentSession = sessionId
-        let voiceId = settings.selectedVoiceId
+        let voiceId = settings.serverVoiceId
+        let ttsMode: String? = settings.isLocalVoiceSelected ? "none" : nil
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
 
@@ -152,7 +154,7 @@ final class ConversationViewModel: ObservableObject {
                     guard !trimmed.isEmpty else { self.state = .idle; return }  // heard nothing
                     self.messages.append(Message(role: .user, text: trimmed))
                     self.state = .thinking
-                    await self.streamTextTurnBody(trimmed, sessionId: currentSession, voiceId: voiceId)
+                    await self.streamTextTurnBody(trimmed, sessionId: currentSession, voiceId: voiceId, tts: ttsMode)
                     return
                 } catch is CancellationError {
                     VoiceRecorder.discard(url)
@@ -177,7 +179,7 @@ final class ConversationViewModel: ObservableObject {
                 try await self.consumeTurn(
                     api.streamAudio(
                         fileURL: url, mimeType: "audio/m4a",
-                        sessionId: currentSession, voiceId: voiceId
+                        sessionId: currentSession, voiceId: voiceId, tts: ttsMode
                     ),
                     appendUserFromTranscribed: true
                 )
@@ -186,7 +188,7 @@ final class ConversationViewModel: ObservableObject {
                 VoiceRecorder.discard(url)  // user interrupted; drop their audio
             } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code != 0 {
                 // Streaming endpoint unavailable (older backend) → single-shot.
-                await self.sendAudioFallback(url: url, sessionId: currentSession, voiceId: voiceId)
+                await self.sendAudioFallback(url: url, sessionId: currentSession, voiceId: voiceId, tts: ttsMode)
             } catch {
                 VoiceRecorder.discard(url)
                 if !Task.isCancelled { self.failTurn(error) }
@@ -203,10 +205,11 @@ final class ConversationViewModel: ObservableObject {
         state = .thinking
 
         let currentSession = sessionId
-        let voiceId = settings.selectedVoiceId
+        let voiceId = settings.serverVoiceId
+        let ttsMode: String? = settings.isLocalVoiceSelected ? "none" : nil
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.streamTextTurnBody(trimmed, sessionId: currentSession, voiceId: voiceId)
+            await self.streamTextTurnBody(trimmed, sessionId: currentSession, voiceId: voiceId, tts: ttsMode)
         }
         currentTurn = task
         await task.value
@@ -217,16 +220,16 @@ final class ConversationViewModel: ObservableObject {
     /// Does NOT create its own Task — the caller owns `currentTurn` so barge-in
     /// cancels the right thing. Falls back to a single-shot text POST if the
     /// streaming endpoint is unavailable; swallows cancellation.
-    private func streamTextTurnBody(_ trimmed: String, sessionId: String?, voiceId: String) async {
+    private func streamTextTurnBody(_ trimmed: String, sessionId: String?, voiceId: String, tts: String?) async {
         do {
             try await consumeTurn(
-                api.streamText(trimmed, sessionId: sessionId, voiceId: voiceId),
+                api.streamText(trimmed, sessionId: sessionId, voiceId: voiceId, tts: tts),
                 appendUserFromTranscribed: false
             )
         } catch is CancellationError {
             // user barged in; userPressedMic already moved us to recording
         } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code != 0 {
-            await sendTextFallback(trimmed, sessionId: sessionId, voiceId: voiceId)
+            await sendTextFallback(trimmed, sessionId: sessionId, voiceId: voiceId, tts: tts)
         } catch {
             if !Task.isCancelled { failTurn(error) }
         }
@@ -274,7 +277,17 @@ final class ConversationViewModel: ObservableObject {
                 if !sid.isEmpty { sessionId = sid }
                 messages.append(Message(role: .assistant, text: txt))
                 settings.markReachable()
+                // On-device TTS: the backend was told tts=none and won't emit an
+                // `audio` event, so synthesize + speak the reply here on the phone.
+                if settings.isLocalVoiceSelected {
+                    state = .speaking
+                    await LocalSpeaker.shared.speak(txt, voice: settings.localVoiceName)
+                    if state == .speaking { state = .idle }
+                }
             case .audio(let path):
+                // Ignore any server audio while a local voice is active (defensive —
+                // tts=none means it normally won't arrive).
+                if settings.isLocalVoiceSelected { break }
                 guard let audioURL = api.makeURL(path: path) else { break }
                 state = .speaking
                 await player.play(url: audioURL, authToken: settings.authToken)
@@ -292,9 +305,9 @@ final class ConversationViewModel: ObservableObject {
 
     /// Single-shot fallback used when the streaming endpoint is unavailable
     /// (e.g. an older backend that 404s on /api/*/stream).
-    private func sendTextFallback(_ text: String, sessionId: String?, voiceId: String) async {
+    private func sendTextFallback(_ text: String, sessionId: String?, voiceId: String, tts: String?) async {
         do {
-            let response = try await api.sendText(text, sessionId: sessionId, voiceId: voiceId)
+            let response = try await api.sendText(text, sessionId: sessionId, voiceId: voiceId, tts: tts)
             try Task.checkCancellation()
             await handle(response: response)
         } catch is CancellationError {
@@ -303,10 +316,10 @@ final class ConversationViewModel: ObservableObject {
         }
     }
 
-    private func sendAudioFallback(url: URL, sessionId: String?, voiceId: String) async {
+    private func sendAudioFallback(url: URL, sessionId: String?, voiceId: String, tts: String?) async {
         do {
             let response = try await api.sendAudio(
-                fileURL: url, mimeType: "audio/m4a", sessionId: sessionId, voiceId: voiceId
+                fileURL: url, mimeType: "audio/m4a", sessionId: sessionId, voiceId: voiceId, tts: tts
             )
             VoiceRecorder.discard(url)
             try Task.checkCancellation()
@@ -344,6 +357,7 @@ final class ConversationViewModel: ObservableObject {
             state = .idle
         case .speaking:
             player.stop()
+            LocalSpeaker.shared.stop()
             state = .idle
         case .idle, .error:
             break
@@ -390,6 +404,15 @@ final class ConversationViewModel: ObservableObject {
         }
         messages.append(Message(role: .assistant, text: response.assistantText))
         if !response.sessionId.isEmpty { sessionId = response.sessionId }
+
+        // On-device TTS path (single-shot fallback): backend sent no audio_url
+        // (tts=none), so speak the reply locally.
+        if settings.isLocalVoiceSelected {
+            state = .speaking
+            await LocalSpeaker.shared.speak(response.assistantText, voice: settings.localVoiceName)
+            if state == .speaking { state = .idle }
+            return
+        }
 
         guard let audioPath = response.audioUrl else {
             state = .idle

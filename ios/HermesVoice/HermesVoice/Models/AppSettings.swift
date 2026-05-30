@@ -44,6 +44,23 @@ final class AppSettings: ObservableObject {
 
     func markReachable() { lastReachable = Date() }
 
+    /// True when the chosen voice is an on-device Kokoro voice. These are stored
+    /// in `selectedVoiceId` with a `local:` prefix (e.g. `local:af_heart`) so one
+    /// picker covers both server (ElevenLabs) and on-device voices. When true,
+    /// the turn tells the backend `tts=none` and the phone speaks the reply.
+    var isLocalVoiceSelected: Bool { selectedVoiceId.hasPrefix("local:") }
+
+    /// The Kokoro voice name when a local voice is selected (else the default).
+    var localVoiceName: String {
+        guard isLocalVoiceSelected else { return LocalSpeaker.defaultVoice }
+        return String(selectedVoiceId.dropFirst("local:".count))
+    }
+
+    /// The `voice_id` to send to the backend: a local voice must NOT be sent as
+    /// `voice_id` (it isn't an ElevenLabs id, and the colon fails server
+    /// validation), so it resolves to empty → server uses its default / no TTS.
+    var serverVoiceId: String { isLocalVoiceSelected ? "" : selectedVoiceId }
+
     // ───── Phase B: schedules push notifications ─────
 
     /// Has the user opted into receiving notifications for scheduled fires?

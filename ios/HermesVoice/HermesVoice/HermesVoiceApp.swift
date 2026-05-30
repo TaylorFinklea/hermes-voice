@@ -31,10 +31,13 @@ struct HermesVoiceApp: App {
                 MainView()
                     .environmentObject(settings)
                     .environmentObject(conversation)
-                    // If the on-device STT model is already downloaded, warm it
-                    // into memory now so the first mic turn doesn't pay the load
-                    // cost. No-op when not downloaded.
-                    .task { LocalTranscriber.shared.warmUpIfDownloaded() }
+                    // If the on-device STT / TTS models are already downloaded,
+                    // warm them into memory now so the first mic turn + first
+                    // spoken reply don't pay the load cost. No-ops when absent.
+                    .task {
+                        LocalTranscriber.shared.warmUpIfDownloaded()
+                        LocalSpeaker.shared.warmUpIfDownloaded()
+                    }
             } else {
                 OnboardingView()
                     .environmentObject(settings)

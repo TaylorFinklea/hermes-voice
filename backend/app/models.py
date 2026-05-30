@@ -8,6 +8,10 @@ class TextRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=4000)
     session_id: str | None = None
     voice_id: str | None = Field(default=None, max_length=80, pattern=r"^[A-Za-z0-9_-]*$")
+    # "none" → skip server TTS (the client synthesizes the reply on-device, e.g.
+    # Kokoro). Omitted / "server" → synthesize as usual. This is the hook that
+    # lets the phone own voice I/O and treat the backend as a text-only brain.
+    tts: str | None = Field(default=None, pattern=r"^(none|server)$")
 
 
 class ToolCallSummary(BaseModel):

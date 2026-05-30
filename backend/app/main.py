@@ -177,7 +177,11 @@ def _register_routes(app: FastAPI) -> None:
     )
     async def text_turn(body: TextRequest) -> TurnResponse:
         return await _run_turn(
-            app, user_text=body.text, session_id=body.session_id, voice_id=body.voice_id
+            app,
+            user_text=body.text,
+            session_id=body.session_id,
+            voice_id=body.voice_id,
+            tts_mode=body.tts,
         )
 
     @app.post(
@@ -189,6 +193,7 @@ def _register_routes(app: FastAPI) -> None:
         file: Annotated[UploadFile, File()],
         session_id: Annotated[str | None, Form()] = None,
         voice_id: Annotated[str | None, Form()] = None,
+        tts: Annotated[str | None, Form()] = None,
     ) -> TurnResponse:
         stt: STTProvider | None = app.state.stt
         if stt is None:
@@ -211,14 +216,18 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=422, detail="no speech detected")
 
         return await _run_turn(
-            app, user_text=user_text, session_id=session_id, voice_id=voice_id
+            app, user_text=user_text, session_id=session_id, voice_id=voice_id, tts_mode=tts
         )
 
     @app.post("/api/text/stream", dependencies=[Depends(_require_token)])
     async def text_turn_stream(body: TextRequest) -> StreamingResponse:
         return StreamingResponse(
             _stream_turn(
-                app, user_text=body.text, session_id=body.session_id, voice_id=body.voice_id
+                app,
+                user_text=body.text,
+                session_id=body.session_id,
+                voice_id=body.voice_id,
+                tts_mode=body.tts,
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
@@ -229,6 +238,7 @@ def _register_routes(app: FastAPI) -> None:
         file: Annotated[UploadFile, File()],
         session_id: Annotated[str | None, Form()] = None,
         voice_id: Annotated[str | None, Form()] = None,
+        tts: Annotated[str | None, Form()] = None,
     ) -> StreamingResponse:
         stt: STTProvider | None = app.state.stt
         if stt is None:
@@ -243,7 +253,7 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=422, detail="no speech detected")
         return StreamingResponse(
             _stream_turn(
-                app, user_text=user_text, session_id=session_id, voice_id=voice_id
+                app, user_text=user_text, session_id=session_id, voice_id=voice_id, tts_mode=tts
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
@@ -518,7 +528,12 @@ async def _read_capped(file: UploadFile, cap: int) -> bytes:
 
 
 async def _run_turn(
-    app: FastAPI, *, user_text: str, session_id: str | None, voice_id: str | None = None
+    app: FastAPI,
+    *,
+    user_text: str,
+    session_id: str | None,
+    voice_id: str | None = None,
+    tts_mode: str | None = None,
 ) -> TurnResponse:
     import time
 
@@ -543,7 +558,7 @@ async def _run_turn(
     # latency. The TTS producer is already a background task; we just need
     # to not block on the audit before kicking it off.
     audio_url: str | None = None
-    if tts is not None:
+    if tts is not None and tts_mode != "none":
         try:
             # IMPORTANT: only the assistant prose is synthesized. Tool calls
             # are never spoken — they're for visual auditing only.
@@ -572,7 +587,12 @@ async def _run_turn(
 
 
 async def _stream_turn(
-    app: FastAPI, *, user_text: str, session_id: str | None, voice_id: str | None = None
+    app: FastAPI,
+    *,
+    user_text: str,
+    session_id: str | None,
+    voice_id: str | None = None,
+    tts_mode: str | None = None,
 ):
     """SSE event generator for a streaming turn.
 
@@ -597,7 +617,7 @@ async def _stream_turn(
                 yield sse({"type": "tools", "items": [tc.as_dict() for tc in ev.tools]})
                 yield sse({"type": "assistant", "text": ev.text, "session_id": ev.session_id})
                 audio_url: str | None = None
-                if tts is not None and ev.text:
+                if tts is not None and ev.text and tts_mode != "none":
                     try:
                         audio_url = _start_stream(app, tts, ev.text, voice_id=voice_id)
                     except Exception as e:

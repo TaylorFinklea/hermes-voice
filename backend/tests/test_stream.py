@@ -54,3 +54,37 @@ def test_text_stream_rejects_malformed_voice_id():
     client = build_client(hermes=FakeHermes(), tts=FakeTTS())
     resp = client.post("/api/text/stream", json={"text": "hi", "voice_id": "../bad"})
     assert resp.status_code == 422
+
+
+def test_text_stream_tts_none_skips_audio_event():
+    # tts=none → the client will speak the reply on-device, so the server
+    # must NOT synthesize or emit an `audio` event. The assistant + done
+    # events still flow.
+    client = build_client(hermes=FakeHermes(reply="hi there"), tts=FakeTTS())
+    with client.stream(
+        "POST", "/api/text/stream", json={"text": "hello", "tts": "none"}
+    ) as resp:
+        assert resp.status_code == 200
+        body = "".join(resp.iter_text())
+
+    types = [e["type"] for e in _parse_sse(body)]
+    assert "assistant" in types
+    assert "audio" not in types
+    assert types[-1] == "done"
+
+
+def test_text_turn_tts_none_returns_no_audio_url():
+    # Same contract on the non-streaming fallback: no audio_url when tts=none.
+    client = build_client(hermes=FakeHermes(reply="hi there"), tts=FakeTTS())
+    resp = client.post("/api/text", json={"text": "hello", "tts": "none"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["assistant_text"] == "hi there"
+    assert body["audio_url"] is None
+
+
+def test_text_stream_rejects_bad_tts_value():
+    # Only the documented modes are accepted.
+    client = build_client(hermes=FakeHermes(), tts=FakeTTS())
+    resp = client.post("/api/text/stream", json={"text": "hi", "tts": "bogus"})
+    assert resp.status_code == 422

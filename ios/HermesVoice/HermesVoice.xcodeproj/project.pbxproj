@@ -15,6 +15,7 @@
 		171016A758AC0DB68E96667A /* hermes-chime.caf in Resources */ = {isa = PBXBuildFile; fileRef = DD20A90C8B53ADF46EBD18FA /* hermes-chime.caf */; };
 		218DF712A568866AAE836A91 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 248F1323DED3121D4CA9EFC0 /* TranscriptView.swift */; };
 		2B84FDCF95AE614F422952E7 /* HeroPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33B966AD3C9F9B2FF70EA6E1 /* HeroPane.swift */; };
+		316C9FEA01ACD9DD3D0B836C /* LocalSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8442F3F4BB38C203C77F24 /* LocalSpeaker.swift */; };
 		37340FF95EA27FD9CD48857F /* WatchMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9810290C4737AC3EE5035FF /* WatchMainView.swift */; };
 		3A049B40F2E4A88A1765590A /* HermesVoiceWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37EDE32364962A2156475E57 /* HermesVoiceWidgetBundle.swift */; };
 		3D3CEBD0C0B5596F50E6E865 /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17443799D7DD2573C9C51F40 /* Message.swift */; };
@@ -101,6 +102,7 @@
 		1311370320FAC18BD5A7A0D5 /* AskHermesIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHermesIntent.swift; sourceTree = "<group>"; };
 		17443799D7DD2573C9C51F40 /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
 		17D27F3D268D95B51D59B300 /* PushToTalkButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushToTalkButton.swift; sourceTree = "<group>"; };
+		1C8442F3F4BB38C203C77F24 /* LocalSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSpeaker.swift; sourceTree = "<group>"; };
 		248F1323DED3121D4CA9EFC0 /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
 		2F5107EB40D7F7FFED269FED /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		33B966AD3C9F9B2FF70EA6E1 /* HeroPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroPane.swift; sourceTree = "<group>"; };
@@ -315,6 +317,7 @@
 				9FB3B7188CD4A6892599F80E /* ChimePlayer.swift */,
 				8E038B022A79A275C21BB70B /* HermesVoiceAPI.swift */,
 				F10E963463B97606F132C982 /* LiveActivityController.swift */,
+				1C8442F3F4BB38C203C77F24 /* LocalSpeaker.swift */,
 				506CD3DFC00ECED6AA2941B4 /* LocalTranscriber.swift */,
 				71159F3B5BD1FDDED47FF2ED /* NotificationManager.swift */,
 				E262A46EED41E59D516CD6EB /* PhoneWatchBridge.swift */,
@@ -483,6 +486,7 @@
 				2B84FDCF95AE614F422952E7 /* HeroPane.swift in Sources */,
 				5EBA33362E4F96514827A2F6 /* HistoryView.swift in Sources */,
 				112A641E9BAB5EF32CF2887B /* LiveActivityController.swift in Sources */,
+				316C9FEA01ACD9DD3D0B836C /* LocalSpeaker.swift in Sources */,
 				602D649F831D9569F2670F42 /* LocalTranscriber.swift in Sources */,
 				0AA8C39365DB851D04C7582E /* MainView.swift in Sources */,
 				3D3CEBD0C0B5596F50E6E865 /* Message.swift in Sources */,

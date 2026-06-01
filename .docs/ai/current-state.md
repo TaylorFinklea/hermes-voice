@@ -4,12 +4,16 @@
 
 ## Active Branch
 
-`main` — working tree clean after this session's live-turn visibility commit. Recent before this: `fbbce42` backend-stale diagnosis + build 12 UX, `81ec7d0` Release 1.0 build 12, `79b55b5` iOS UX polish.
+`main` — working tree clean after TestFlight build 13 release. Recent: `f6da31b` Release 1.0 build 13, `dbfafee` live-turn visibility, `fbbce42` backend-stale diagnosis + build 12 UX.
 
 ## Last Session Summary
 
-**Date**: 2026-05-30
+**Date**: 2026-06-01
 
+- **TestFlight build 13 uploaded (2026-06-01).**
+  - Ran XcodeBuildMCP `build_sim` (`HermesVoice`, Debug, iOS Simulator, `CODE_SIGNING_ALLOWED=NO`) → **SUCCEEDED**.
+  - Ran `./scripts/release.sh --build`: bumped `CURRENT_PROJECT_VERSION` **12 → 13**, regenerated project, archived Release/generic iOS, exported/uploaded through App Store Connect → **EXPORT SUCCEEDED**.
+  - Release script committed `f6da31b` (`Release 1.0 (build 13) to TestFlight`). App Store Connect processing expected 5-15 min.
 - **Live-turn visibility fixes from on-device screenshots (2026-06-01) — BUILT (iOS simulator build succeeded).**
   - **Thinking affordance now visibly animates:** `HeroPane.BounceLabel` uses `TimelineView(.animation)` with pulsing dots, an elapsed `m:ss` counter, and a moving progress strip, replacing the too-subtle static-feeling opacity dots under "Composing reply…".
   - **Recovered "History-only" replies:** `ConversationViewModel.consumeTurn` now tracks whether a stream actually delivered an assistant event, stores `done.session_id`, and if the stream ends without assistant text it fetches the just-finished session from `/api/sessions/{id}` and appends the matching latest assistant reply. The same recovery runs on text-stream transport errors when a resume session id is available. This covers the observed bug where Hermes saved replies visible in History but the live pane returned to idle without showing them.
@@ -55,6 +59,7 @@ Re-verified 2026-05-28 (post-Live-Activity commit `0b204e1`):
 - **Re-verified after hands-free conversation mode (2026-05-30)**: iOS **BUILD SUCCEEDED, 0 errors** (LocalVad + ConversationCaptureEngine + ConversationModeController + UI). Backend untouched (still 54 pass + 2 pre-existing mdns ordering flakes). NOT device-tested — needs a device to download the VAD model, enter conversation mode, and exercise the listen→reply→re-listen loop + barge-in + auto-exit.
 - **Re-verified after on-device TTS (Kokoro) (2026-05-29)**: iOS **BUILD SUCCEEDED** (Kokoro API + sentence-chunked LocalSpeaker + tts=none wiring). Backend: `tts=none` added, `pytest` **54 passed** + the 2 pre-existing `test_mdns` ordering failures (fail at HEAD too; pass in isolation) — 3 new `test_stream.py` tts=none tests green. NOT on-device-tested — needs a device to download the Kokoro model, pick an on-device voice, and confirm spoken-on-device replies + `tts=none` (no audio event) + barge-in.
 - **Re-verified after on-device STT Phase A (2026-05-29)**: iOS **BUILD SUCCEEDED** with the FluidAudio SPM package resolved (first resolve fetches from GitHub; pinned revision = reproducible). Backend untouched (53/53 holds). Shipped in TestFlight build 9 (`a88fa59`). NOT on-device-tested — needs a real device to: download the ~450 MB model in Settings, confirm a mic turn hits `/api/text/stream` (not `/api/audio/stream`) i.e. transcribes locally, verify barge-in/cancel during local transcription, and confirm the upload fallback when the model is absent/disabled. Not yet in a TestFlight build.
+- **Re-verified + released after live-turn visibility fix (2026-06-01)**: XcodeBuildMCP `build_sim` → **SUCCEEDED**; `scripts/release.sh --build` archived Release/generic iOS and uploaded **Hermes Voice 1.0 build 13** to TestFlight. No backend changes.
 
 ## Schedules — CONFIRMED WORKING END-TO-END (2026-05-28)
 

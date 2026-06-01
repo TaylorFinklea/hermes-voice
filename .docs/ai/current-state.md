@@ -4,12 +4,16 @@
 
 ## Active Branch
 
-`main` — working tree clean (all work committed). Recent: `0b204e1` Live Activity (2026-05-28), `6b91d4e` schedules/APNs fixes (2026-05-28), `7d3a94b` initial.
+`main` — working tree clean after this session's live-turn visibility commit. Recent before this: `fbbce42` backend-stale diagnosis + build 12 UX, `81ec7d0` Release 1.0 build 12, `79b55b5` iOS UX polish.
 
 ## Last Session Summary
 
 **Date**: 2026-05-30
 
+- **Live-turn visibility fixes from on-device screenshots (2026-06-01) — BUILT (iOS simulator build succeeded).**
+  - **Thinking affordance now visibly animates:** `HeroPane.BounceLabel` uses `TimelineView(.animation)` with pulsing dots, an elapsed `m:ss` counter, and a moving progress strip, replacing the too-subtle static-feeling opacity dots under "Composing reply…".
+  - **Recovered "History-only" replies:** `ConversationViewModel.consumeTurn` now tracks whether a stream actually delivered an assistant event, stores `done.session_id`, and if the stream ends without assistant text it fetches the just-finished session from `/api/sessions/{id}` and appends the matching latest assistant reply. The same recovery runs on text-stream transport errors when a resume session id is available. This covers the observed bug where Hermes saved replies visible in History but the live pane returned to idle without showing them.
+  - **Verify:** XcodeBuildMCP `build_sim` (`HermesVoice`, Debug, iOS Simulator, `CODE_SIGNING_ALLOWED=NO`) → **SUCCEEDED**; only pre-existing warnings (NotificationManager actor conformance, AVAudio warnings, AppSettings Swift 6 warning).
 - **On-device feedback round (build 12) + a major backend gotcha caught.**
   - **Turns were "not processing" — ROOT CAUSE: the backend was running STALE code** (launchd service up since ~Thu 11 AM, before this session's Phase 2 streaming / voice picker / tts=none). Log `/tmp/hermes-voice.log` showed `POST /api/text/stream → 404`, `/api/audio/stream → 405`, `/api/voices → 404`, so the app silently fell back to single-shot `/api/text` (no live tool-calls, 60s client timeout). `/health` + `/api/sessions` kept working, masking it. **FIXED: `launchctl kickstart -k "gui/$(id -u)/dev.finklea.hermesvoice.backend"`** → verified `/api/text/stream` + `/api/voices` now 401 (exist). **Lesson saved to memory ([[backend-restart-required-for-backend-changes]]): release.sh only builds iOS; restart the backend after any `backend/app/**` change.**
   - **Second, separate cause: Hermes itself is slow.** Direct test on the Mac: `hermes chat -q "...pong"` → replied "pong" in **2m 56s** (mostly "Initializing agent…"), right under the 180s `hermes_timeout`. Agent-side (LLM provider degraded today, or slow MCP/agent init — noticed 3 leftover `mcp_schedules.py` procs). With the backend restarted, turns now use the 300s streaming path + show live progress, but any turn >180s still gets cut by the backend cap. **Open: make Hermes fast (investigate the ~3-min init) and/or raise `HERMES_TIMEOUT_SECONDS`.**

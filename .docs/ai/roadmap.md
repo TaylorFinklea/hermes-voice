@@ -31,6 +31,7 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 
 ### Redesign polish (interleave with above)
 - [ ] On-device walkthrough every state, fix layout bugs
+- [x] Thinking-state progress affordance + live-pane recovery for History-only replies — FIXED (2026-06-01). "Composing reply…" now has visible motion + elapsed time; if a streamed turn ends/errors after Hermes persisted an answer but before the phone receives `assistant`, the current session is backfilled from History so the reply appears in the live pane.
 - [x] Scrollback tap → in-app expand transcript — SHIPPED (`e5b88e6`); opens in-app `TranscriptView` (live in-memory transcript), no longer the History sheet
 - [x] ActionCard variants beyond calendar — bulleted/numbered-list `.bullets` variant SHIPPED (`e5b88e6`). Device-list / todo-with-checkboxes / key-value still **blocked on structured backend tool output** (today only `ToolCall(name, preview, ok)` arrives)
 - [x] Scheduled-arrival badge in MainView (tap → resume session) — SHIPPED (`e5b88e6`)

@@ -252,31 +252,60 @@ private struct HeroThinks: View {
 private struct BounceLabel: View {
     let text: String
     let color: Color
-    @State private var t: Double = 0
+    @State private var startedAt = Date()
 
     var body: some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 3) {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .fill(color)
-                        .frame(width: 4, height: 4)
-                        .opacity(opacity(for: i))
+        TimelineView(.animation) { context in
+            let elapsed = context.date.timeIntervalSince(startedAt)
+            let phase = elapsed.truncatingRemainder(dividingBy: 1.2) / 1.2
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    ForEach(0..<3, id: \.self) { i in
+                        let localPhase = (phase + Double(i) * 0.22).truncatingRemainder(dividingBy: 1)
+                        Circle()
+                            .fill(color)
+                            .frame(width: 5, height: 5)
+                            .scaleEffect(0.72 + (0.55 * pulse(localPhase)))
+                            .opacity(0.35 + (0.65 * pulse(localPhase)))
+                            .offset(y: -4 * pulse(localPhase))
+                    }
                 }
+                Text("\(text) \(formatElapsed(elapsed))")
+                    .font(HVFont.bodyDim)
+                    .monospacedDigit()
+                    .foregroundStyle(color)
+                Spacer(minLength: 0)
+                ProgressStrip(phase: phase, color: color)
+                    .frame(width: 54, height: 3)
             }
-            Text(text)
-                .font(HVFont.bodyDim)
-                .foregroundStyle(color)
-            Spacer(minLength: 0)
         }
-        .onAppear {
-            withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) { t = 1 }
-        }
+        .onAppear { startedAt = Date() }
     }
-    private func opacity(for i: Int) -> Double {
-        let offset = Double(i) * 0.2
-        let v = (t + offset).truncatingRemainder(dividingBy: 1)
-        return 0.3 + 0.7 * sin(v * .pi)
+
+    private func pulse(_ phase: Double) -> Double {
+        max(0, sin(phase * .pi))
+    }
+
+    private func formatElapsed(_ elapsed: TimeInterval) -> String {
+        let seconds = max(0, Int(elapsed))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+private struct ProgressStrip: View {
+    let phase: Double
+    let color: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(color.opacity(0.20))
+                Capsule()
+                    .fill(color)
+                    .frame(width: max(12, proxy.size.width * 0.34))
+                    .offset(x: (proxy.size.width * 0.66) * phase)
+            }
+        }
     }
 }
 

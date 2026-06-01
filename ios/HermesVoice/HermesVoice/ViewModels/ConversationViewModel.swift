@@ -235,7 +235,13 @@ final class ConversationViewModel: ObservableObject {
         } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code != 0 {
             await sendTextFallback(trimmed, sessionId: sessionId, voiceId: voiceId, tts: tts)
         } catch {
-            if !Task.isCancelled { failTurn(error) }
+            if !Task.isCancelled {
+                let recovered = await recoverMissingAssistantFromHistory(
+                    sessionId: sessionId,
+                    turnUserText: trimmed
+                )
+                if !recovered { failTurn(error) }
+            }
         }
     }
 
@@ -248,6 +254,9 @@ final class ConversationViewModel: ObservableObject {
         appendUserFromTranscribed: Bool
     ) async throws {
         var turnToolIDs: [UUID] = []
+        var sawAssistant = false
+        var finalSessionId = sessionId
+        let turnUserText = lastUserText
         for try await ev in stream {
             try Task.checkCancellation()
             switch ev {
@@ -278,7 +287,9 @@ final class ConversationViewModel: ObservableObject {
                     turnToolIDs.append(m.id)
                 }
             case .assistant(let txt, let sid):
+                sawAssistant = true
                 if !sid.isEmpty { sessionId = sid }
+                finalSessionId = sid.isEmpty ? finalSessionId : sid
                 messages.append(Message(role: .assistant, text: txt))
                 settings.markReachable()
                 // On-device TTS: the backend was told tts=none and won't emit an
@@ -296,15 +307,81 @@ final class ConversationViewModel: ObservableObject {
                 state = .speaking
                 await player.play(url: audioURL, authToken: settings.authToken)
                 state = .idle
-            case .done:
+            case .done(let sid):
+                if !sid.isEmpty {
+                    sessionId = sid
+                    finalSessionId = sid
+                }
                 if state != .speaking { state = .idle }
             case .failed(let detail):
                 state = .error(detail)
                 return
             }
         }
+        if !sawAssistant,
+           let sid = finalSessionId,
+           await recoverMissingAssistantFromHistory(sessionId: sid, turnUserText: turnUserText) {
+            return
+        }
         // Stream ended cleanly with no audio leg (e.g. TTS disabled).
         if state == .thinking || state == .sending { state = .idle }
+    }
+
+    /// Defensive recovery for a real-world stream edge case: Hermes can finish
+    /// the turn and persist the assistant reply, while the phone misses the
+    /// final `assistant` event. Pull the just-finished turn from History so the
+    /// user sees the answer in the live pane instead of only after opening
+    /// History.
+    private func recoverMissingAssistantFromHistory(
+        sessionId: String?,
+        turnUserText: String?
+    ) async -> Bool {
+        guard let sessionId, !sessionId.isEmpty else { return false }
+        do {
+            let detail = try await api.getSession(id: sessionId)
+            guard let assistantText = latestAssistantText(
+                in: detail.messages,
+                afterUserText: turnUserText
+            ) else {
+                return false
+            }
+            if !messages.contains(where: { $0.role == .assistant && $0.text == assistantText }) {
+                messages.append(Message(role: .assistant, text: assistantText))
+            }
+            settings.markReachable()
+            if settings.isLocalVoiceSelected {
+                state = .speaking
+                await LocalSpeaker.shared.speak(assistantText, voice: settings.localVoiceName)
+                if state == .speaking { state = .idle }
+            } else if state == .thinking || state == .sending {
+                state = .idle
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func latestAssistantText(
+        in messages: [HermesVoiceAPI.HistoryMessage],
+        afterUserText userText: String?
+    ) -> String? {
+        let trimmedUserText = userText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var startIndex = messages.startIndex
+        if let trimmedUserText, !trimmedUserText.isEmpty {
+            var foundUser = false
+            for idx in messages.indices.reversed() where messages[idx].role == "user" {
+                if messages[idx].text.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedUserText {
+                    startIndex = messages.index(after: idx)
+                    foundUser = true
+                    break
+                }
+            }
+            if !foundUser { return nil }
+        }
+        return messages[startIndex...]
+            .last(where: { $0.role == "assistant" && !$0.text.isEmpty })?
+            .text
     }
 
     /// Single-shot fallback used when the streaming endpoint is unavailable

@@ -4,7 +4,13 @@
 
 ## Active Branch
 
-`main` — working tree clean. Recent: `b629d61` iOS session browser + attach (Phase A iOS), `22f5aec` Claude session discovery + cwd-aware resume (Phase A backend), `81ec7d0`/`f6da31b` TestFlight build 12/13, `8636c58` iOS agent picker (P3), `4f45971`/`0315a52`/`aca730d` P2/P1/P0. **TestFlight: build 14 (the NEW `dev.finklea.harnessvoice` app) uploaded; it has P0–P3 but NOT Phase A. Phase A is not in any build yet.**
+`main` — working tree clean. Recent: `ecb0abc` per-agent header accent, `d35cc4a` agent-aware UI + token UX + finish HERMES→HARNESS rebrand, `b629d61`/`22f5aec` Phase A iOS/backend, `8636c58`/`4f45971`/`0315a52`/`aca730d` P3/P2/P1/P0.
+
+**TestFlight (new `dev.finklea.harnessvoice` app): build 16 uploaded** — has P0–P3 + Phase A attach + the UI batch. (build 14 = P0–P3; build 15 = +Phase A; build 16 = +agent-aware UI/token-fix/accent.) Backend is restarted with all of this live.
+
+**UI polish batch (in build 16):** state chips + title reflect the ACTIVE agent (`AppSettings.activeAgentLabel`/`activeAgentTitle`; `StatusChip` reads it via env, no call-site changes); token field placeholder + 401 errors fixed ("auth token required"); finished the uppercase HERMES→HARNESS rebrand misses; subtle per-agent header accent (`AppSettings.agentAccent`: Hermes amber, Claude coral 0xE8825A, Codex mono 0xE6E6E6, OpenCode violet 0x9B8CFF; applied to title + root .tint only). Accent can extend to the mic button / full theme / a user-selectable picker later.
+
+**NEXT (user's pick pending): Phase B** — voice-mediated write approval (the headline; makes attach powerful). Plan in `~/.claude/plans/mighty-dazzling-biscuit.md` §Phase B. Or expand accent theming.
 
 ## Flagship: Claude Code voice-attach — Phase A DONE, Phase B next
 

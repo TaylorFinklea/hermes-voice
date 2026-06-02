@@ -12,9 +12,32 @@ existing `HermesClient` / `MockHermesClient` / test `FakeHermes` already conform
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from .hermes import HermesReply, StreamReply, StreamTool
+
+
+@dataclass(frozen=True)
+class HarnessSession:
+    """One past session a harness surfaces for the 'attach' picker.
+
+    `cwd`/`title` are populated by coding agents (e.g. Claude Code, whose
+    sessions are working-directory-scoped); Hermes leaves them None. Returned by
+    an adapter's OPTIONAL `list_sessions(limit)` method — the
+    /api/harnesses/{id}/sessions endpoint fetches it via getattr (mirroring how
+    /api/voices fetches a TTS provider's optional `list_voices`), so an adapter
+    without it simply lists nothing.
+    """
+
+    session_id: str
+    source: str            # harness id, e.g. "claude"
+    started_at: float      # unix ts (last activity) — for sort + display
+    message_count: int
+    tool_call_count: int
+    preview: str
+    cwd: str | None = None
+    title: str | None = None
 
 
 @runtime_checkable

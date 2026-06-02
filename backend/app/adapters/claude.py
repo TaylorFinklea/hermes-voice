@@ -33,10 +33,13 @@ import os
 import shutil
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
 
 from ..config import Settings
+from ..harness import HarnessSession
 from ..hermes import HermesError, HermesReply, StreamReply, StreamTool
-from ..session_audit import ToolCallSummary, _preview
+from ..session_audit import ToolCallSummary, _preview, _truncate
 
 # Same voice-shaping prelude philosophy as Hermes, but kept local so the Claude
 # adapter can be tuned independently. Prepended only on the FIRST turn; on
@@ -177,6 +180,156 @@ def parse_event(obj: dict) -> StreamTool | None:
 
 
 # ---------------------------------------------------------------------------
+# Session discovery — Claude stores each session as a JSONL transcript at
+# ~/.claude/projects/<slugified-cwd>/<session_id>.jsonl. No CLI lists sessions,
+# so we scan that tree. Resume is cwd-scoped, so the cwd captured here is what a
+# resumed turn must run in. Functions take an optional projects_dir for testing.
+# ---------------------------------------------------------------------------
+
+
+def _claude_projects_dir() -> Path:
+    return Path.home() / ".claude" / "projects"
+
+
+def _parse_iso(value: object) -> float:
+    """ISO-8601 (e.g. '2026-05-29T10:45:26.868Z') -> epoch float; 0.0 on fail."""
+    if not isinstance(value, str) or not value:
+        return 0.0
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _first_user_text(obj: dict) -> str:
+    """Best-effort user prompt text from a transcript event (for the preview)."""
+    if isinstance(obj.get("content"), str):  # queue-operation enqueue event
+        return obj["content"]
+    if obj.get("type") == "user":
+        content = (obj.get("message") or {}).get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = [
+                b.get("text", "")
+                for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            ]
+            return " ".join(p for p in parts if p)
+    return ""
+
+
+def _count_tool_uses(obj: dict) -> int:
+    if obj.get("type") != "assistant":
+        return 0
+    content = (obj.get("message") or {}).get("content")
+    if not isinstance(content, list):
+        return 0
+    return sum(
+        1 for b in content if isinstance(b, dict) and b.get("type") == "tool_use"
+    )
+
+
+def session_meta_from_file(path: Path) -> HarnessSession | None:
+    """Build a HarnessSession from one Claude `<session_id>.jsonl` transcript."""
+    session_id = path.stem
+    if not session_id:
+        return None
+    cwd: str | None = None
+    preview = ""
+    title: str | None = None
+    last_ts = 0.0
+    msg_count = 0
+    tool_count = 0
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                if cwd is None and isinstance(obj.get("cwd"), str):
+                    cwd = obj["cwd"]
+                ts = _parse_iso(obj.get("timestamp"))
+                if ts > last_ts:
+                    last_ts = ts
+                etype = obj.get("type")
+                if etype == "ai-title" and isinstance(obj.get("aiTitle"), str):
+                    title = obj["aiTitle"].strip() or title
+                if etype in ("user", "assistant"):
+                    msg_count += 1
+                tool_count += _count_tool_uses(obj)
+                if not preview:
+                    preview = _first_user_text(obj)
+    except OSError:
+        return None
+    started_at = last_ts if last_ts > 0 else path.stat().st_mtime
+    return HarnessSession(
+        session_id=session_id,
+        source="claude",
+        started_at=started_at,
+        message_count=msg_count,
+        tool_call_count=tool_count,
+        preview=_truncate(preview, 200),
+        cwd=cwd,
+        title=title,
+    )
+
+
+def list_claude_sessions(
+    limit: int = 30, projects_dir: Path | None = None
+) -> list[HarnessSession]:
+    """Most-recent Claude sessions (by transcript mtime), newest first."""
+    base = projects_dir or _claude_projects_dir()
+    if not base.is_dir():
+        return []
+    try:
+        files = sorted(
+            base.glob("*/*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True
+        )
+    except OSError:
+        return []
+    out: list[HarnessSession] = []
+    for path in files[: max(0, limit)]:
+        meta = session_meta_from_file(path)
+        if meta is not None:
+            out.append(meta)
+    return out
+
+
+def session_cwd_from_disk(
+    session_id: str, projects_dir: Path | None = None
+) -> str | None:
+    """The original working directory of a Claude session id, or None."""
+    if not session_id:
+        return None
+    base = projects_dir or _claude_projects_dir()
+    if not base.is_dir():
+        return None
+    for path in base.glob(f"*/{session_id}.jsonl"):
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(obj, dict) and isinstance(obj.get("cwd"), str):
+                        return obj["cwd"]
+        except OSError:
+            continue
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Adapter
 # ---------------------------------------------------------------------------
 
@@ -207,21 +360,48 @@ class ClaudeAdapter:
         os.makedirs(wd, exist_ok=True)
         return wd
 
-    def _base_args(self, prompt: str, session_id: str | None) -> list[str]:
+    def _session_cwd(self, session_id: str | None) -> str | None:
+        if not session_id:
+            return None
+        return session_cwd_from_disk(session_id)
+
+    def _resolve_cwd(self, session_id: str | None) -> tuple[str, bool]:
+        """(cwd, is_external) for a turn. External = resuming a session whose
+        real working directory is a repo OUTSIDE our shared workspace; those
+        turns run read-only (see _base_args) so voice can't edit real code until
+        the approval layer lands."""
+        ext = self._session_cwd(session_id)
+        if ext and ext != self._settings.harness_workspace_dir:
+            return ext, True
+        return self._workspace(), False
+
+    def _base_args(
+        self, prompt: str, session_id: str | None, read_only: bool
+    ) -> list[str]:
         shaped = prompt
         if _VOICE_PRELUDE and not session_id:
             shaped = f"{_VOICE_PRELUDE}\n\n{prompt}"
-        args = [self.bin, "-p", shaped, "--permission-mode", "acceptEdits"]
+        args = [self.bin, "-p", shaped]
+        if read_only:
+            # Attached to a real repo: read/analyze only — no edits or mutating
+            # commands. Write-by-voice arrives with the approval layer (Phase B).
+            args += ["--permission-mode", "plan", "--allowedTools", "Read,Bash(git *)"]
+        else:
+            args += ["--permission-mode", "acceptEdits"]
         if session_id:
             args.extend(["--resume", session_id])
         return args
+
+    async def list_sessions(self, limit: int = 30) -> list[HarnessSession]:
+        """Recent Claude Code sessions for the iOS attach picker."""
+        return await asyncio.to_thread(list_claude_sessions, limit)
 
     async def ask(self, prompt: str, session_id: str | None = None) -> HermesReply:
         if not prompt.strip():
             raise HermesError("empty prompt")
 
-        cwd = self._workspace()
-        args = self._base_args(prompt, session_id)
+        cwd, read_only = self._resolve_cwd(session_id)
+        args = self._base_args(prompt, session_id, read_only)
         args.extend(["--output-format", "json"])
 
         try:
@@ -262,8 +442,8 @@ class ClaudeAdapter:
         if not prompt.strip():
             raise HermesError("empty prompt")
 
-        cwd = self._workspace()
-        args = self._base_args(prompt, session_id)
+        cwd, read_only = self._resolve_cwd(session_id)
+        args = self._base_args(prompt, session_id, read_only)
         args.extend(
             [
                 "--output-format",

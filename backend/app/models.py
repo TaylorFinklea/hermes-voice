@@ -38,6 +38,10 @@ class SessionListItem(BaseModel):
     message_count: int
     tool_call_count: int
     preview: str
+    # Coding-agent sessions are working-directory-scoped; cwd/title are shown in
+    # the iOS attach picker. Null for Hermes sessions.
+    cwd: str | None = None
+    title: str | None = None
 
 
 class HistoryToolCall(BaseModel):

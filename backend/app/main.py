@@ -426,6 +426,43 @@ def _register_routes(app: FastAPI) -> None:
         return items
 
     @app.get(
+        "/api/harnesses/{harness_id}/sessions",
+        response_model=list[SessionListItem],
+        dependencies=[Depends(_require_token)],
+    )
+    async def list_harness_sessions(
+        harness_id: str, limit: int = 30
+    ) -> list[SessionListItem]:
+        """Recent sessions for one harness, for the iOS 'attach' picker. An
+        adapter without `list_sessions` lists nothing (same optional-capability
+        pattern as /api/voices)."""
+        harness = _resolve_harness(app, harness_id)
+        fetch = getattr(harness, "list_sessions", None)
+        if fetch is None:
+            return []
+        limit = max(1, min(limit, 200))
+        try:
+            sessions = await fetch(limit)
+        except Exception as e:
+            logger.warning("session list failed for %s: %s", harness_id, e)
+            raise HTTPException(
+                status_code=502, detail=f"session list failed: {e}"
+            ) from e
+        return [
+            SessionListItem(
+                session_id=s.session_id,
+                source=s.source,
+                started_at=s.started_at,
+                message_count=s.message_count,
+                tool_call_count=s.tool_call_count,
+                preview=s.preview,
+                cwd=s.cwd,
+                title=s.title,
+            )
+            for s in sessions
+        ]
+
+    @app.get(
         "/api/schedules",
         response_model=list[ScheduleResponse],
         dependencies=[Depends(_require_token)],

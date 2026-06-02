@@ -4,17 +4,23 @@
 
 ## Active Branch
 
-`main` — working tree clean. Recent: `aca730d` Rebrand → Harness Voice (P0), `91d9997` harden live-turn recovery (NOT yet in a TestFlight build), `f6da31b` Release 1.0 build 13, `dbfafee` live-turn visibility.
+`main` — working tree clean. Recent: `8636c58` iOS agent picker (P3), `4f45971` Claude/Codex/OpenCode adapters (P2), `0315a52` harness dispatch layer (P1), `aca730d` Rebrand → Harness Voice (P0), `91d9997` harden live-turn recovery. **None of P0–P3 is in a TestFlight build yet.**
 
-## Harness Voice initiative (rebrand + multi-harness) — IN PROGRESS
+## Harness Voice initiative (rebrand + multi-harness) — IMPLEMENTED (P0–P3), awaiting live test
 
-Spec: `.docs/ai/phases/harness-voice-multiharness-spec.md`. User decisions (2026-06-02): **full identity rebrand**, **shared workspace** `~/.harness-voice/workspace`, **workspace-write sandbox**, **per-turn `harness` param**, implement end-to-end.
+Spec: `.docs/ai/phases/harness-voice-multiharness-spec.md`. User decisions (2026-06-02): **full identity rebrand**, **shared workspace** `~/.harness-voice/workspace`, **workspace-write sandbox**, **per-turn `harness` param**, implement end-to-end. All four phases built + committed; iOS build green, backend 86/86.
+
+**REMAINING:**
+- **Live end-to-end test** of Claude/Codex/OpenCode through the app on a device (adapters verified against real CLI output at the unit level + a live Codex resume, but not yet driven through the running backend + app). To test locally now: restart the backend (`launchctl kickstart -k …harnessvoice.backend` AFTER reinstalling the renamed plist) then `GET /api/harnesses`.
+- **⚠️ Before next TestFlight upload:** new bundle id `dev.finklea.harnessvoice` = NEW App Store Connect app — create the app record + APNs key first, else `release.sh` upload fails. Then cut build 14.
+- **Backend redeploy** for the rebrand: reinstall the renamed launchd plists (`dev.finklea.harnessvoice.*`), re-register the MCP server as `harness-voice` if you use schedules. (Data dir `~/.hermes-voice` + `HERMES_VOICE_*` env intentionally unchanged.)
+- Doc-prose rebrand (README architecture section, schedules-setup MCP name) + app-icon redesign — both deferred polish.
 
 - **P0 Rebrand — DONE (`aca730d`).** Bundle id `dev.finklea.hermesvoice`→`dev.finklea.harnessvoice` (app/watch/widget, xcodegen-regenerated), display name Hermes→Harness, Bonjour `_harness-voice._tcp`, MCP `harness-voice-schedules`, package `harness-voice-backend`, launchd plists renamed, Live Activity URL scheme, release.sh, iOS UI/Siri copy. **KEPT (back-compat):** `HERMES_VOICE_*` env, `~/.hermes-voice` data dir, `X-Hermes-Voice-Token` header, repo dir path, Hermes-harness code identifiers (`HermesClient`/`hermes.py`/`hermes_bin`/`HERMES_*`), Xcode target/scheme/type codenames (so `release.sh -scheme HermesVoice` still works). Verified: iOS BUILD SUCCEEDED w/ new bundle id; backend 56/56. **App icon still winged-H (Hermes) — design follow-up.**
   - **⚠️ ACTION REQUIRED before next TestFlight upload:** new bundle id = NEW App Store Connect app — create the app record + APNs key for `dev.finklea.harnessvoice` first, else `release.sh` upload fails.
-- **P1 Backend HarnessClient protocol + dispatch — NEXT.** Seam mapped: `create_app(hermes=…)`→`app.state.hermes`; `_run_turn`/`_stream_turn` read it; thread a `harness` param (mirror existing `tts` plumbing) + add registry/resolver + `/api/harnesses`. CONSTRAINT: keep `HermesClient` class name (conftest `FakeHermes(HermesClient)` + `test_providers` `HermesClient._parse` depend on it) — the "adapter" is the Protocol it satisfies, not a rename.
-- **P2 Claude/Codex/OpenCode adapters — verified all 3 installed + fit cleanly** (claude 2.1.160 `-p --output-format stream-json`; codex 0.136.0 `exec --json` + rollout JSONL; opencode 1.15.13 `run --format json` + `export`). All emit session_id + tool calls + final text in structured stdout (cleaner than Hermes). Best done via the parallel-adapter workflow. Per-adapter JSONL parse tests with fixtures.
-- **P3 iOS harness picker + per-turn param** (mirror `tts`/`voice_id` threading in HermesVoiceAPI + AppSettings.selectedHarness + SettingsView picker fed by `/api/harnesses` + harness-aware strings).
+- **P1 Backend HarnessClient protocol + dispatch — DONE (`0315a52`).** `HarnessClient` Protocol (`backend/app/harness.py`); `app.state.harnesses` registry + `_resolve_harness` (422 on unknown); per-turn `harness` field threaded through all 4 turn endpoints (stream endpoints validate BEFORE streaming); `GET /api/harnesses`; config `default_harness`/`harness_workspace_dir`/`harness_sandbox`. Kept `HermesClient` class name. 62 tests.
+- **P2 Claude/Codex/OpenCode adapters — DONE (`4f45971`).** `backend/app/adapters/{claude,codex,opencode}.py`, each satisfying the protocol, running in the shared workspace under a workspace-write non-interactive sandbox; parse split into pure functions (24 fixture tests vs REAL captured CLI output). Registered by availability in `create_app` (production only — tests inject FakeHermes and stay isolated). Codex 0.136.0 uses the NEW `thread.started`/`item.*` event schema. Claude `--permission-mode acceptEdits`; Codex `-c approval_policy=never -c sandbox_mode=workspace-write`; OpenCode `OPENCODE_CONFIG_CONTENT` perms + `--dir`. Smoke: registers `[claude,codex,hermes,opencode]`, default hermes. 86 tests.
+- **P3 iOS harness picker + per-turn param — DONE (`8636c58`).** `AppSettings.selectedHarness` (default hermes); `HermesVoiceAPI.listHarnesses()` + `harness` threaded through sendText/sendAudio/streamText/streamAudio; ConversationViewModel passes it on every turn (incl. hands-free + Watch via PhoneWatchBridge); SettingsView "AGENT" picker fed by `/api/harnesses` w/ fallback reset. iOS BUILD SUCCEEDED.
 
 ## Prior Session Summary
 

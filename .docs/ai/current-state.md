@@ -4,9 +4,17 @@
 
 ## Active Branch
 
-`main` — working tree clean. Recent: `8636c58` iOS agent picker (P3), `4f45971` Claude/Codex/OpenCode adapters (P2), `0315a52` harness dispatch layer (P1), `aca730d` Rebrand → Harness Voice (P0), `91d9997` harden live-turn recovery. **None of P0–P3 is in a TestFlight build yet.**
+`main` — working tree clean. Recent: `b629d61` iOS session browser + attach (Phase A iOS), `22f5aec` Claude session discovery + cwd-aware resume (Phase A backend), `81ec7d0`/`f6da31b` TestFlight build 12/13, `8636c58` iOS agent picker (P3), `4f45971`/`0315a52`/`aca730d` P2/P1/P0. **TestFlight: build 14 (the NEW `dev.finklea.harnessvoice` app) uploaded; it has P0–P3 but NOT Phase A. Phase A is not in any build yet.**
 
-## Harness Voice initiative (rebrand + multi-harness) — IMPLEMENTED (P0–P3), awaiting live test
+## Flagship: Claude Code voice-attach — Phase A DONE, Phase B next
+
+Plan: `~/.claude/plans/mighty-dazzling-biscuit.md`. Decision (2026-06-02): general architecture, **depth-first on Claude Code**, Hermes stays default. Keystone = drive an EXISTING coding session by voice; safety = voice-mediated approval (Phase B).
+
+- **Phase A — attach + drive (DONE).** Backend (`22f5aec`): `list_sessions()` (optional, via getattr) + `GET /api/harnesses/{id}/sessions`; Claude adapter scans `~/.claude/projects/*/*.jsonl` (pure fns, fixture-tested + validated on real data), resumes in each session's ORIGINAL cwd (sessions are cwd-scoped), and runs **read-only** when the cwd is a real repo outside the shared workspace (`--permission-mode plan --allowedTools "Read,Bash(git *)"`). iOS (`b629d61`): `SessionBrowserView` + `ConversationViewModel.attach(...)` + a "Attach to a session" link under the AGENT picker (coding harnesses only). 94 backend tests; iOS build green.
+  - **To live-test Phase A:** restart backend to load it, `GET /api/harnesses/claude/sessions` (401 w/o token = exists), then build 15 for the on-device attach UI.
+- **Phase B — voice-mediated approval + structured questions (NEXT, large).** Verified mechanism: **Claude Agent SDK** (`claude-agent-sdk` pkg) `ClaudeSDKClient` + async `can_use_tool` + `permission_mode="plan"` → surface "Claude wants to <edit/run>" as an approval card confirmed by voice; custom `AskUser` MCP tool for voice-answerable select/multi-select. Needs a bidirectional channel (new `approval_request`/`question` SSE events + `turn_id`-keyed `POST …/answer` + asyncio futures) and iOS approval/question cards wired to on-device STT yes/no/option-matching. Bigger than Phase A; isolate it.
+
+## Harness Voice initiative (rebrand + multi-harness) — IMPLEMENTED (P0–P3), in build 14
 
 Spec: `.docs/ai/phases/harness-voice-multiharness-spec.md`. User decisions (2026-06-02): **full identity rebrand**, **shared workspace** `~/.harness-voice/workspace`, **workspace-write sandbox**, **per-turn `harness` param**, implement end-to-end. All four phases built + committed; iOS build green, backend 86/86.
 

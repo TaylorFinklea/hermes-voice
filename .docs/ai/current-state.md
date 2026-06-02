@@ -4,11 +4,18 @@
 
 ## Active Branch
 
-`main` — working tree clean after TestFlight build 13 release. Recent: `f6da31b` Release 1.0 build 13, `dbfafee` live-turn visibility, `fbbce42` backend-stale diagnosis + build 12 UX.
+`main` — working tree clean. Recent: `91d9997` harden live-turn recovery (review fixes, NOT yet in a TestFlight build), `f6da31b` Release 1.0 build 13, `dbfafee` live-turn visibility, `fbbce42` backend-stale diagnosis + build 12 UX.
 
 ## Last Session Summary
 
-**Date**: 2026-06-01
+**Date**: 2026-06-02
+
+- **Reviewed GPT-5.5's `dbfafee` "Fix live turn visibility" + committed 3 hardening fixes (`91d9997`, ConversationViewModel.swift). iOS build SUCCEEDED; backend untouched. NOT yet in a TestFlight build.**
+  - **Silent-failure:** `recoverMissingAssistantFromHistory` now returns true only when it appends a NEW reply; a dedup hit (coincidental duplicate from an earlier turn) returns false so the real error surfaces. The streamText catch first checks new `currentTurnHasAssistantReply()` so a late stream drop *after* the reply already streamed in resolves to idle (not an error).
+  - **Cancellation:** recovery now bails on `Task.isCancelled` before AND after the `getSession` await — a barge-in/cancel can't append or speak a dismissed reply.
+  - **Stale anchor:** `turnUserText` now updates from the live `.transcribed` event on the audio-upload path (user msg appended mid-stream) instead of the prior turn's `lastUserText`.
+  - **IMPORTANT correction — a review false-positive debunked:** the worry that "session_id is never captured for new streaming conversations → new convos error / multi-turn broken / recovery useless" is **WRONG**. `_RESUME_LINE` (`--resume\s+(\S+)`, session_audit.py:29) matches Hermes's own stdout footer ("Resume this session with: hermes --resume <id>"), which prints on every non-quiet turn (`ask_streaming` runs `chat -q`, no `-Q`), so `captured` IS populated for new conversations. Confirmed by the direct `hermes chat -q` test output + the fact that streamed turns have produced replies all along. Multi-turn continuity works.
+  - **Deferred (low sev, not fixed):** `HeroPane.BounceLabel` uses `TimelineView(.animation)` → 60–120fps redraws for the whole multi-minute thinking window; a `.periodic(by: 0.1)` schedule would cut redraws ~6–12× (battery, not correctness). Elapsed timer resets when the thinking pane is recreated post-barge-in (mostly expected).
 
 - **TestFlight build 13 uploaded (2026-06-01).**
   - Ran XcodeBuildMCP `build_sim` (`HermesVoice`, Debug, iOS Simulator, `CODE_SIGNING_ALLOWED=NO`) → **SUCCEEDED**.

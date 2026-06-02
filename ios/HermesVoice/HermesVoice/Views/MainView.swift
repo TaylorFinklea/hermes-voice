@@ -96,7 +96,7 @@ struct MainView: View {
                 Text(conversationMode.errorMessage ?? "")
             }
         }
-        .tint(HVColor.amber)
+        .tint(settings.agentAccent)
         .preferredColorScheme(.dark)
     }
 
@@ -122,7 +122,7 @@ struct MainView: View {
             Text(settings.activeAgentTitle)
                 .font(HVFont.title)
                 .tracking(0.8)
-                .foregroundStyle(HVColor.amber)
+                .foregroundStyle(settings.agentAccent)
         }
         ToolbarItem(placement: .topBarLeading) {
             Button { activeSheet = .history } label: {

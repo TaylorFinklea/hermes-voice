@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import SwiftUI
 
 /// User-facing settings. Persisted in UserDefaults so they survive launches.
 final class AppSettings: ObservableObject {
@@ -142,6 +143,18 @@ final class AppSettings: ObservableObject {
     /// name once you've switched to a coding agent.
     var activeAgentTitle: String {
         selectedHarness == "hermes" ? "HARNESS VOICE" : activeAgentLabel
+    }
+
+    /// A subtle per-agent accent for the header (title + toolbar tint). The rest
+    /// of the palette stays the base amber so it doesn't get loud. Easy to tweak
+    /// here, or later swap for a user-selectable picker.
+    var agentAccent: Color {
+        switch selectedHarness {
+        case "claude": return Color(hex: 0xE8825A)    // warm coral / red-orange
+        case "codex": return Color(hex: 0xE6E6E6)     // near-white (mono)
+        case "opencode": return Color(hex: 0x9B8CFF)  // violet
+        default: return HVColor.amber                 // hermes + fallback
+        }
     }
 
     init() {

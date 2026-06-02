@@ -4,13 +4,19 @@
 
 ## Active Branch
 
-`main` — working tree clean. Recent: `ecb0abc` per-agent header accent, `d35cc4a` agent-aware UI + token UX + finish HERMES→HARNESS rebrand, `b629d61`/`22f5aec` Phase A iOS/backend, `8636c58`/`4f45971`/`0315a52`/`aca730d` P3/P2/P1/P0.
+`main` — working tree clean. Recent: `d93894e` Phase B Slice 1 (approval broker), `d8f2b6a` title=<AGENT> VOICE, `ecb0abc` per-agent accent, `d35cc4a` agent-aware UI + token UX, `b629d61`/`22f5aec` Phase A, `8636c58`/`4f45971`/`0315a52`/`aca730d` P3/P2/P1/P0.
 
-**TestFlight (new `dev.finklea.harnessvoice` app): build 16 uploaded** — has P0–P3 + Phase A attach + the UI batch. (build 14 = P0–P3; build 15 = +Phase A; build 16 = +agent-aware UI/token-fix/accent.) Backend is restarted with all of this live.
+**TestFlight (new `dev.finklea.harnessvoice` app): build 16 uploaded** — P0–P3 + Phase A attach + UI batch. (14=P0–P3; 15=+Phase A; 16=+agent-aware UI/token-fix/accent.) **NOT in build 16:** the title=<AGENT> VOICE fix (`d8f2b6a`) + Phase B (backend-only so far). Backend restarted with P0–P3 + Phase A live (NOT yet Phase B's broker — restart to load it).
 
 **UI polish batch (in build 16):** state chips + title reflect the ACTIVE agent (`AppSettings.activeAgentLabel`/`activeAgentTitle`; `StatusChip` reads it via env, no call-site changes); token field placeholder + 401 errors fixed ("auth token required"); finished the uppercase HERMES→HARNESS rebrand misses; subtle per-agent header accent (`AppSettings.agentAccent`: Hermes amber, Claude coral 0xE8825A, Codex mono 0xE6E6E6, OpenCode violet 0x9B8CFF; applied to title + root .tint only). Accent can extend to the mic button / full theme / a user-selectable picker later.
 
-**NEXT (user's pick pending): Phase B** — voice-mediated write approval (the headline; makes attach powerful). Plan in `~/.claude/plans/mighty-dazzling-biscuit.md` §Phase B. Or expand accent theming.
+**Phase B — voice-mediated write approval — IN PROGRESS (slices).** Plan: `~/.claude/plans/mighty-dazzling-biscuit.md` §Phase B.
+- **Slice 1 DONE (`d93894e`):** `ApprovalBroker` (`backend/app/approvals.py`) — per-turn registry of pending `asyncio.Future`s + emit queue; `request(turn_id, payload)` emits an `approval_request`/`question` event + awaits the answer; `answer()` resolves; `events()` drains for SSE; `close()` cancels. `POST /api/turns/{turn_id}/answer` (TurnAnswer). `app.state.approvals`. SDK-agnostic, 4 tests, 98 total.
+- **Slice 2 (NEXT, trickiest):** Claude-Agent-SDK path — add the `claude-agent-sdk` python dep (VERIFY exact name + install + the `can_use_tool`/`ClaudeAgentOptions(permission_mode="plan")` API first); a `can_use_tool` callback that calls `broker.request(...)` and returns `PermissionResultAllow/Deny`; **merge** the broker's `events()` into `_stream_turn`'s SSE output (send `turn_id` on open, `broker.open()/close()` around the turn). Likely a parallel SDK-backed Claude path used only when approvals are on (CLI path stays for simple turns).
+- **Slice 3:** custom `AskUser` MCP tool (select/multi-select) → `broker.request({type:"question",...})`.
+- **Slice 4 (iOS):** approval card ("Claude wants to edit X — Approve/Deny") + question card; voice yes/no/option-matching via on-device STT + tap fallback; POST the answer to `/api/turns/{id}/answer`. Speak the prompt via local TTS first.
+
+Accent theming can also extend later (mic button / full theme / user-selectable picker).
 
 ## Flagship: Claude Code voice-attach — Phase A DONE, Phase B next
 

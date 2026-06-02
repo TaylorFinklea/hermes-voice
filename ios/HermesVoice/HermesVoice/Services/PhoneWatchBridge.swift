@@ -49,7 +49,8 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
             let response = try await api.sendAudio(
                 fileURL: file.fileURL,
                 mimeType: "audio/m4a",
-                sessionId: sessionId
+                sessionId: sessionId,
+                harness: settings.selectedHarness
             )
             await replyToWatch(response: response)
 

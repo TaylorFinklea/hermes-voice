@@ -18,6 +18,10 @@ struct SettingsView: View {
     @State private var voicesLoading = false
     @State private var voicesError = ""
 
+    @State private var harnesses: [HermesVoiceAPI.HarnessOption] = []
+    @State private var harnessesLoading = false
+    @State private var harnessesError = ""
+
     @StateObject private var transcriber = LocalTranscriber.shared
     @StateObject private var speaker = LocalSpeaker.shared
     @StateObject private var vad = LocalVad.shared
@@ -29,6 +33,7 @@ struct SettingsView: View {
 
                 Form {
                     backendSection
+                    harnessSection
                     schedulesSection
                     notificationsSection
                     voiceSection
@@ -71,6 +76,7 @@ struct SettingsView: View {
                 }
             }
             .task { await loadVoices() }
+            .task { await loadHarnesses() }
         }
         .tint(HVColor.amber)
         .preferredColorScheme(.dark)
@@ -215,6 +221,60 @@ struct SettingsView: View {
             voicesError = ""
         } catch {
             voicesError = "Couldn't load voices (is the backend reachable?)."
+        }
+    }
+
+    private var harnessSection: some View {
+        Section {
+            Picker("Agent", selection: $settings.selectedHarness) {
+                ForEach(harnesses) { h in
+                    Text(h.available ? h.name : "\(h.name) (unavailable)")
+                        .tag(h.harnessId)
+                }
+            }
+            .pickerStyle(.navigationLink)
+            .tint(HVColor.amber)
+            .listRowBackground(HVColor.creamSurface)
+            if harnessesLoading {
+                HStack(spacing: 8) {
+                    ProgressView().tint(HVColor.amber)
+                    Text("Loading agents…")
+                        .font(HVFont.captionTiny)
+                        .foregroundStyle(HVColor.creamDim)
+                }
+                .listRowBackground(HVColor.creamSurface)
+            } else if !harnessesError.isEmpty {
+                Text(harnessesError)
+                    .font(HVFont.captionTiny)
+                    .foregroundStyle(HVColor.creamDim)
+                    .listRowBackground(HVColor.creamSurface)
+            }
+        } header: {
+            sectionHeader("AGENT")
+        } footer: {
+            Text("Which agent answers your turns. Hermes is the default; Claude Code, Codex, and OpenCode run in a shared workspace on your Mac.")
+                .font(HVFont.captionTiny)
+                .foregroundStyle(HVColor.creamDim)
+        }
+    }
+
+    private func loadHarnesses() async {
+        harnessesLoading = true
+        defer { harnessesLoading = false }
+        let api = HermesVoiceAPI(baseURL: settings.backendURL, authToken: settings.authToken)
+        do {
+            harnesses = try await api.listHarnesses()
+            harnessesError = ""
+            // If the persisted selection is no longer offered (e.g. a CLI was
+            // uninstalled), fall back to the first available agent.
+            if !harnesses.isEmpty,
+               !harnesses.contains(where: { $0.harnessId == settings.selectedHarness && $0.available }) {
+                if let fallback = harnesses.first(where: { $0.available }) ?? harnesses.first {
+                    settings.selectedHarness = fallback.harnessId
+                }
+            }
+        } catch {
+            harnessesError = "Couldn't load agents (is the backend reachable?)."
         }
     }
 

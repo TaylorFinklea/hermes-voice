@@ -115,6 +115,17 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(useOnDeviceSTT, forKey: Keys.useOnDeviceSTT) }
     }
 
+    // ───── Harness (which agent backs a turn) ─────
+
+    /// The agent backend a turn is routed to: "hermes" (default), "claude",
+    /// "codex", or "opencode". Sent as the `harness` field on each turn; the
+    /// backend dispatches to the matching adapter. Options come from
+    /// `/api/harnesses`. Empty would mean the backend default, but we persist a
+    /// concrete id so the picker reflects the active choice.
+    @Published var selectedHarness: String {
+        didSet { UserDefaults.standard.set(selectedHarness, forKey: Keys.selectedHarness) }
+    }
+
     init() {
         let d = UserDefaults.standard
         self.backendURL = d.string(forKey: Keys.backendURL) ?? "http://127.0.0.1:8765"
@@ -136,6 +147,7 @@ final class AppSettings: ObservableObject {
         // behavior once the model is present. Harmless before download (falls
         // back to upload).
         self.useOnDeviceSTT = d.object(forKey: Keys.useOnDeviceSTT) as? Bool ?? true
+        self.selectedHarness = d.string(forKey: Keys.selectedHarness) ?? "hermes"
         // Onboarding shows on a fresh install (default URL + flag unset). Treat
         // an already-configured non-default backend as onboarded so upgraders
         // aren't bounced back through onboarding.
@@ -157,5 +169,6 @@ final class AppSettings: ObservableObject {
         static let hasCompletedOnboarding = "hv.hasCompletedOnboarding"
         static let selectedVoiceId = "hv.selectedVoiceId"
         static let useOnDeviceSTT = "hv.useOnDeviceSTT"
+        static let selectedHarness = "hv.selectedHarness"
     }
 }

@@ -64,7 +64,7 @@ struct HermesVoiceAPI {
         return json
     }
 
-    func sendText(_ text: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil) async throws -> TurnResponse {
+    func sendText(_ text: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil, harness: String? = nil) async throws -> TurnResponse {
         let url = try buildURL("/api/text")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -73,13 +73,14 @@ struct HermesVoiceAPI {
         if let sessionId, !sessionId.isEmpty { payload["session_id"] = sessionId }
         if let voiceId, !voiceId.isEmpty { payload["voice_id"] = voiceId }
         if let tts, !tts.isEmpty { payload["tts"] = tts }
+        if let harness, !harness.isEmpty { payload["harness"] = harness }
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, response) = try await perform(req)
         try Self.ensureOK(response, data: data)
         return try Self.decoder.decode(TurnResponse.self, from: data)
     }
 
-    func sendAudio(fileURL: URL, mimeType: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil) async throws -> TurnResponse {
+    func sendAudio(fileURL: URL, mimeType: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil, harness: String? = nil) async throws -> TurnResponse {
         let url = try buildURL("/api/audio")
         let boundary = "----HermesVoiceBoundary\(UUID().uuidString)"
         var req = URLRequest(url: url)
@@ -117,6 +118,9 @@ struct HermesVoiceAPI {
         }
         if let tts, !tts.isEmpty {
             appendPart(name: "tts", data: tts.data(using: .utf8)!)
+        }
+        if let harness, !harness.isEmpty {
+            appendPart(name: "harness", data: harness.data(using: .utf8)!)
         }
         body.append("--\(boundary)--\(crlf)".data(using: .utf8)!)
 
@@ -399,17 +403,18 @@ struct HermesVoiceAPI {
     }
 
     func streamText(
-        _ text: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil
+        _ text: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil, harness: String? = nil
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         var payload: [String: Any] = ["text": text]
         if let sessionId, !sessionId.isEmpty { payload["session_id"] = sessionId }
         if let voiceId, !voiceId.isEmpty { payload["voice_id"] = voiceId }
         if let tts, !tts.isEmpty { payload["tts"] = tts }
+        if let harness, !harness.isEmpty { payload["harness"] = harness }
         return events(path: "/api/text/stream", jsonBody: payload)
     }
 
     func streamAudio(
-        fileURL: URL, mimeType: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil
+        fileURL: URL, mimeType: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil, harness: String? = nil
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         let boundary = "----HermesVoiceBoundary\(UUID().uuidString)"
         var body = Data()
@@ -436,6 +441,9 @@ struct HermesVoiceAPI {
         }
         if let tts, !tts.isEmpty {
             appendPart(name: "tts", data: tts.data(using: .utf8)!)
+        }
+        if let harness, !harness.isEmpty {
+            appendPart(name: "harness", data: harness.data(using: .utf8)!)
         }
         body.append("--\(boundary)--\(crlf)".data(using: .utf8)!)
         return events(path: "/api/audio/stream", multipart: (boundary, body))
@@ -566,6 +574,32 @@ struct HermesVoiceAPI {
         try Self.ensureOK(response, data: data)
         do {
             return try Self.decoder.decode([VoiceOption].self, from: data)
+        } catch {
+            throw APIError.decode(error)
+        }
+    }
+
+    // MARK: - Harnesses
+
+    struct HarnessOption: Decodable, Identifiable, Equatable {
+        var id: String { harnessId }
+        let harnessId: String
+        let name: String
+        let available: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case harnessId = "id"
+            case name
+            case available
+        }
+    }
+
+    func listHarnesses() async throws -> [HarnessOption] {
+        let url = try buildURL("/api/harnesses")
+        let (data, response) = try await perform(URLRequest(url: url))
+        try Self.ensureOK(response, data: data)
+        do {
+            return try Self.decoder.decode([HarnessOption].self, from: data)
         } catch {
             throw APIError.decode(error)
         }

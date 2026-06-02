@@ -56,6 +56,14 @@ class Settings:
     hermes_timeout: int = 180
     hermes_extra_args: tuple[str, ...] = field(default_factory=tuple)
 
+    # Multi-harness: which agent backs a turn when the request doesn't name one,
+    # and where/how the coding harnesses (claude/codex/opencode) run. Hermes
+    # ignores workspace/sandbox; the others are cwd-scoped coding agents that run
+    # in a shared workspace under a sandbox.
+    default_harness: str = "hermes"
+    harness_workspace_dir: str = ""
+    harness_sandbox: str = "workspace-write"
+
     stt_provider_override: str = ""
     openai_key: str = ""
     groq_key: str = ""
@@ -94,6 +102,12 @@ def get_settings() -> Settings:
         hermes_bin=_env("HERMES_BIN", default="hermes"),
         hermes_timeout=int(_env("HERMES_TIMEOUT_SECONDS", default="180")),
         hermes_extra_args=tuple(extra),
+        default_harness=_env("HARNESS_DEFAULT", default="hermes"),
+        harness_workspace_dir=_env(
+            "HARNESS_WORKSPACE_DIR",
+            default=str(Path.home() / ".harness-voice" / "workspace"),
+        ),
+        harness_sandbox=_env("HARNESS_SANDBOX", default="workspace-write"),
         stt_provider_override=_env("STT_PROVIDER"),
         openai_key=_env("OPENAI_API_KEY", "VOICE_TOOLS_OPENAI_KEY"),
         groq_key=_env("GROQ_API_KEY"),

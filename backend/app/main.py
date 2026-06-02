@@ -24,10 +24,12 @@ from fastapi.responses import FileResponse, StreamingResponse
 from . import mdns, schedules
 from .audio_store import AudioStore
 from .config import Settings, get_settings
+from .harness import HARNESS_DISPLAY_NAMES, HarnessClient
 from .hermes import HermesClient, HermesError, MockHermesClient, StreamReply, StreamTool
 from .models import (
     DeviceRegisterRequest,
     DeviceResponse,
+    HarnessItem,
     HealthResponse,
     HistoryMessage,
     HistoryToolCall,
@@ -122,6 +124,14 @@ def create_app(
     )
     app.state.settings = settings
     app.state.hermes = hermes
+    # Harness registry: the per-turn `harness` param routes to one of these.
+    # P2 adds claude/codex/opencode; for now Hermes is the only backend.
+    app.state.harnesses = {"hermes": hermes}
+    app.state.default_harness = (
+        settings.default_harness
+        if settings.default_harness in app.state.harnesses
+        else "hermes"
+    )
     app.state.stt = stt
     app.state.tts = tts
     app.state.store = store
@@ -178,6 +188,7 @@ def _register_routes(app: FastAPI) -> None:
     async def text_turn(body: TextRequest) -> TurnResponse:
         return await _run_turn(
             app,
+            harness=_resolve_harness(app, body.harness),
             user_text=body.text,
             session_id=body.session_id,
             voice_id=body.voice_id,
@@ -194,7 +205,9 @@ def _register_routes(app: FastAPI) -> None:
         session_id: Annotated[str | None, Form()] = None,
         voice_id: Annotated[str | None, Form()] = None,
         tts: Annotated[str | None, Form()] = None,
+        harness: Annotated[str | None, Form()] = None,
     ) -> TurnResponse:
+        harness_client = _resolve_harness(app, harness)
         stt: STTProvider | None = app.state.stt
         if stt is None:
             raise HTTPException(
@@ -216,14 +229,17 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=422, detail="no speech detected")
 
         return await _run_turn(
-            app, user_text=user_text, session_id=session_id, voice_id=voice_id, tts_mode=tts
+            app, harness=harness_client,
+            user_text=user_text, session_id=session_id, voice_id=voice_id, tts_mode=tts
         )
 
     @app.post("/api/text/stream", dependencies=[Depends(_require_token)])
     async def text_turn_stream(body: TextRequest) -> StreamingResponse:
+        harness = _resolve_harness(app, body.harness)
         return StreamingResponse(
             _stream_turn(
                 app,
+                harness=harness,
                 user_text=body.text,
                 session_id=body.session_id,
                 voice_id=body.voice_id,
@@ -239,7 +255,9 @@ def _register_routes(app: FastAPI) -> None:
         session_id: Annotated[str | None, Form()] = None,
         voice_id: Annotated[str | None, Form()] = None,
         tts: Annotated[str | None, Form()] = None,
+        harness: Annotated[str | None, Form()] = None,
     ) -> StreamingResponse:
+        harness_client = _resolve_harness(app, harness)
         stt: STTProvider | None = app.state.stt
         if stt is None:
             raise HTTPException(status_code=503, detail="No STT provider configured.")
@@ -253,7 +271,8 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=422, detail="no speech detected")
         return StreamingResponse(
             _stream_turn(
-                app, user_text=user_text, session_id=session_id, voice_id=voice_id, tts_mode=tts
+                app, harness=harness_client,
+                user_text=user_text, session_id=session_id, voice_id=voice_id, tts_mode=tts
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
@@ -371,6 +390,28 @@ def _register_routes(app: FastAPI) -> None:
             logger.warning("voice list failed: %s", e)
             raise HTTPException(status_code=502, detail=f"voice list failed: {e}") from e
         return [VoiceItem(**v) for v in voices]
+
+    @app.get(
+        "/api/harnesses",
+        response_model=list[HarnessItem],
+        dependencies=[Depends(_require_token)],
+    )
+    async def list_harnesses() -> list[HarnessItem]:
+        """Selectable agent backends for the iOS picker. `available` reflects
+        whether each CLI is installed on the host."""
+        harnesses: dict[str, HarnessClient] = app.state.harnesses
+        items: list[HarnessItem] = []
+        for hid, client in harnesses.items():
+            try:
+                avail = bool(client.is_available())
+            except Exception:
+                avail = False
+            items.append(HarnessItem(
+                id=hid,
+                name=HARNESS_DISPLAY_NAMES.get(hid, hid.title()),
+                available=avail,
+            ))
+        return items
 
     @app.get(
         "/api/schedules",
@@ -527,9 +568,23 @@ async def _read_capped(file: UploadFile, cap: int) -> bytes:
     return b"".join(chunks)
 
 
+def _resolve_harness(app: FastAPI, name: str | None) -> HarnessClient:
+    """Look up the harness backing this turn; 422 on an unknown name."""
+    harnesses: dict[str, HarnessClient] = app.state.harnesses
+    key = name or app.state.default_harness
+    client = harnesses.get(key)
+    if client is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown harness '{key}'; available: {', '.join(sorted(harnesses))}",
+        )
+    return client
+
+
 async def _run_turn(
     app: FastAPI,
     *,
+    harness: HarnessClient | None = None,
     user_text: str,
     session_id: str | None,
     voice_id: str | None = None,
@@ -537,7 +592,7 @@ async def _run_turn(
 ) -> TurnResponse:
     import time
 
-    hermes: HermesClient = app.state.hermes
+    hermes: HarnessClient = harness or app.state.harnesses[app.state.default_harness]
     tts: TTSProvider | None = app.state.tts
     store: AudioStore = app.state.store
     settings: Settings = app.state.settings
@@ -589,6 +644,7 @@ async def _run_turn(
 async def _stream_turn(
     app: FastAPI,
     *,
+    harness: HarnessClient | None = None,
     user_text: str,
     session_id: str | None,
     voice_id: str | None = None,
@@ -602,7 +658,7 @@ async def _stream_turn(
     display-only. Additive: the non-streaming /api/text and /api/audio remain
     as the client's fallback.
     """
-    hermes: HermesClient = app.state.hermes
+    hermes: HarnessClient = harness or app.state.harnesses[app.state.default_harness]
     tts: TTSProvider | None = app.state.tts
 
     def sse(obj: dict) -> str:

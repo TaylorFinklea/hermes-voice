@@ -12,6 +12,9 @@ class TextRequest(BaseModel):
     # Kokoro). Omitted / "server" → synthesize as usual. This is the hook that
     # lets the phone own voice I/O and treat the backend as a text-only brain.
     tts: str | None = Field(default=None, pattern=r"^(none|server)$")
+    # Which agent backs this turn (hermes / claude / codex / opencode). Omitted
+    # → the backend's default harness. Mirrors the per-turn `tts` switch.
+    harness: str | None = Field(default=None, max_length=40, pattern=r"^[a-z0-9_-]*$")
 
 
 class ToolCallSummary(BaseModel):
@@ -73,6 +76,13 @@ class VoiceItem(BaseModel):
     voice_id: str
     name: str
     category: str | None = None
+
+
+class HarnessItem(BaseModel):
+    """One selectable agent backend (Hermes, Claude Code, Codex, OpenCode)."""
+    id: str
+    name: str
+    available: bool
 
 
 class HealthResponse(BaseModel):

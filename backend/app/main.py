@@ -71,6 +71,7 @@ def create_app(
 ) -> FastAPI:
     settings = get_settings()
     auto_mock = settings.mock or _should_auto_mock(settings)
+    injected_hermes = hermes is not None
 
     if hermes is None:
         hermes = MockHermesClient(settings) if auto_mock else HermesClient(settings)
@@ -127,6 +128,17 @@ def create_app(
     # Harness registry: the per-turn `harness` param routes to one of these.
     # P2 adds claude/codex/opencode; for now Hermes is the only backend.
     app.state.harnesses = {"hermes": hermes}
+    # Register coding-agent adapters whose CLI is installed. Production only:
+    # tests inject a fake hermes and must stay isolated from real subprocesses.
+    if not injected_hermes:
+        from .adapters import ADAPTER_CLASSES
+        for hid, cls in ADAPTER_CLASSES.items():
+            try:
+                adapter = cls(settings)
+                if adapter.is_available():
+                    app.state.harnesses[hid] = adapter
+            except Exception as e:
+                logger.warning("harness adapter %s unavailable: %s", hid, e)
     app.state.default_harness = (
         settings.default_harness
         if settings.default_harness in app.state.harnesses

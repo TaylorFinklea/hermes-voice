@@ -236,11 +236,19 @@ final class ConversationViewModel: ObservableObject {
             await sendTextFallback(trimmed, sessionId: sessionId, voiceId: voiceId, tts: tts)
         } catch {
             if !Task.isCancelled {
-                let recovered = await recoverMissingAssistantFromHistory(
-                    sessionId: sessionId,
-                    turnUserText: trimmed
-                )
-                if !recovered { failTurn(error) }
+                // A late transport drop AFTER the assistant reply was already
+                // streamed in shouldn't surface as an error — the turn is
+                // visibly complete. Otherwise try to backfill from History, and
+                // only fail the turn if nothing was actually surfaced.
+                if currentTurnHasAssistantReply() {
+                    if state == .thinking || state == .sending { state = .idle }
+                } else {
+                    let recovered = await recoverMissingAssistantFromHistory(
+                        sessionId: sessionId,
+                        turnUserText: trimmed
+                    )
+                    if !recovered { failTurn(error) }
+                }
             }
         }
     }
@@ -256,13 +264,18 @@ final class ConversationViewModel: ObservableObject {
         var turnToolIDs: [UUID] = []
         var sawAssistant = false
         var finalSessionId = sessionId
-        let turnUserText = lastUserText
+        var turnUserText = lastUserText
         for try await ev in stream {
             try Task.checkCancellation()
             switch ev {
             case .transcribed(let t):
                 if appendUserFromTranscribed {
                     messages.append(Message(role: .user, text: t))
+                    // Anchor any later History recovery on THIS turn's user
+                    // text; `lastUserText` captured above is the prior turn for
+                    // audio-upload turns (the user msg is appended here,
+                    // mid-stream, not before consumeTurn).
+                    turnUserText = t
                 }
                 // STT done; Hermes is working — move to the thinking pane so the
                 // live tool chips show (audio turns start in .sending).
@@ -332,22 +345,28 @@ final class ConversationViewModel: ObservableObject {
     /// final `assistant` event. Pull the just-finished turn from History so the
     /// user sees the answer in the live pane instead of only after opening
     /// History.
+    /// Returns true only when a NEW assistant reply was surfaced. A dedup hit
+    /// (the fetched text already present) means we did NOT surface this turn's
+    /// reply — it's a coincidental duplicate from an earlier turn — so we report
+    /// false and let the caller show the real error instead of silently idling.
     private func recoverMissingAssistantFromHistory(
         sessionId: String?,
         turnUserText: String?
     ) async -> Bool {
-        guard let sessionId, !sessionId.isEmpty else { return false }
+        guard let sessionId, !sessionId.isEmpty, !Task.isCancelled else { return false }
         do {
             let detail = try await api.getSession(id: sessionId)
+            guard !Task.isCancelled else { return false }
             guard let assistantText = latestAssistantText(
                 in: detail.messages,
                 afterUserText: turnUserText
             ) else {
                 return false
             }
-            if !messages.contains(where: { $0.role == .assistant && $0.text == assistantText }) {
-                messages.append(Message(role: .assistant, text: assistantText))
+            guard !messages.contains(where: { $0.role == .assistant && $0.text == assistantText }) else {
+                return false
             }
+            messages.append(Message(role: .assistant, text: assistantText))
             settings.markReachable()
             if settings.isLocalVoiceSelected {
                 state = .speaking
@@ -360,6 +379,18 @@ final class ConversationViewModel: ObservableObject {
         } catch {
             return false
         }
+    }
+
+    /// True when the in-flight turn has already shown an assistant reply (an
+    /// assistant message after the latest user message). Lets the caller skip
+    /// surfacing an error for a late stream drop that arrived after the reply
+    /// was already streamed in.
+    private func currentTurnHasAssistantReply() -> Bool {
+        guard let lastUserIdx = messages.lastIndex(where: { $0.role == .user }) else {
+            return false
+        }
+        return messages[messages.index(after: lastUserIdx)...]
+            .contains(where: { $0.role == .assistant })
     }
 
     private func latestAssistantText(

@@ -75,7 +75,7 @@ class Settings:
     apns_key_path: str = ""        # absolute path to the .p8 from Apple Dev
     apns_key_id: str = ""          # 10-char Key ID
     apns_team_id: str = ""         # 10-char Team ID
-    apns_bundle_id: str = "dev.finklea.hermesvoice"
+    apns_bundle_id: str = "dev.finklea.harnessvoice"
     apns_use_sandbox: bool = True  # TestFlight + dev devices use sandbox
 
 
@@ -111,7 +111,7 @@ def get_settings() -> Settings:
         apns_key_path=_env("APNS_KEY_PATH"),
         apns_key_id=_env("APNS_KEY_ID"),
         apns_team_id=_env("APNS_TEAM_ID"),
-        apns_bundle_id=_env("APNS_BUNDLE_ID", default="dev.finklea.hermesvoice"),
+        apns_bundle_id=_env("APNS_BUNDLE_ID", default="dev.finklea.harnessvoice"),
         apns_use_sandbox=_bool("APNS_USE_SANDBOX", default=True),
     )
 

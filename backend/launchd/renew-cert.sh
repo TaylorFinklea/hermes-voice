@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Renew the Tailscale TLS cert and bounce the backend so uvicorn picks it up.
 #
-# Invoked by dev.finklea.hermesvoice.cert-renew.plist on a 30-day cadence.
+# Invoked by dev.finklea.harnessvoice.cert-renew.plist on a 30-day cadence.
 # Safe to run manually any time:
 #   bash backend/launchd/renew-cert.sh
 
@@ -11,7 +11,7 @@ DOMAIN="scadrial.tailceb58.ts.net"
 TAILSCALE="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 TAILSCALE_CERT_DIR="$HOME/Library/Containers/io.tailscale.ipn.macos/Data"
 DEST_DIR="$HOME/.config/tailscale-certs"
-BACKEND_LABEL="dev.finklea.hermesvoice.backend"
+BACKEND_LABEL="dev.finklea.harnessvoice.backend"
 TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
 
 echo "[$TIMESTAMP] starting cert renewal for $DOMAIN"

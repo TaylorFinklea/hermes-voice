@@ -40,7 +40,7 @@ class _LiveStream:
 
 class AudioStore:
     def __init__(self, max_items: int = 64):
-        self._dir = Path(mkdtemp(prefix="hermes-voice-"))
+        self._dir = Path(mkdtemp(prefix="harness-voice-"))
         self._max = max_items
         self._files: OrderedDict[str, Path] = OrderedDict()
         self._streams: OrderedDict[str, _LiveStream] = OrderedDict()

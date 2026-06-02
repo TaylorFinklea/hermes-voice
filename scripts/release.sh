@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# release.sh — bump build, archive, and upload Hermes Voice to TestFlight.
+# release.sh — bump build, archive, and upload Harness Voice to TestFlight.
 #
 # Usage:
 #   ./scripts/release.sh                # default: bump build only
@@ -127,7 +127,7 @@ xcodebuild \
 
 # ---------- export + upload ----------
 step "Exporting and uploading to TestFlight"
-LOG=/tmp/hermesvoice-export.log
+LOG=/tmp/harnessvoice-export.log
 xcodebuild \
     -exportArchive \
     -archivePath "$ARCHIVE_PATH" \
@@ -152,5 +152,5 @@ else
     echo "  (--no-commit: leaving the bump uncommitted)"
 fi
 
-echo -e "\n${GREEN}✔ Hermes Voice $NEW_VERSION (build $NEW_BUILD) uploaded to TestFlight${NC}"
+echo -e "\n${GREEN}✔ Harness Voice $NEW_VERSION (build $NEW_BUILD) uploaded to TestFlight${NC}"
 echo "  Check App Store Connect for processing status (usually 5-15 min)."

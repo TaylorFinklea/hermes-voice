@@ -19,7 +19,7 @@ final class WatchSession: NSObject, ObservableObject {
             case .idle: return "Ready"
             case .recording: return "Recording…"
             case .sending: return "Sending…"
-            case .thinking: return "Hermes…"
+            case .thinking: return "Thinking…"
             case .error(let msg): return msg
             }
         }

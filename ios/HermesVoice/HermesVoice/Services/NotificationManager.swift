@@ -97,7 +97,7 @@ final class NotificationManager: NSObject, ObservableObject {
         let api = HermesVoiceAPI(
             baseURL: settings.backendURL, authToken: settings.authToken
         )
-        let bundleId = Bundle.main.bundleIdentifier ?? "dev.finklea.hermesvoice"
+        let bundleId = Bundle.main.bundleIdentifier ?? "dev.finklea.harnessvoice"
         // iOS apps built with debug provisioning use the APNs sandbox env;
         // TestFlight + App Store use production. The TARGET_OS_SIMULATOR
         // and debug-vs-release split is the standard signal.

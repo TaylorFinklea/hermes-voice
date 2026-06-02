@@ -51,11 +51,11 @@ targets:
       properties:
         # Live Activities (lock screen + Dynamic Island for in-flight turns).
         NSSupportsLiveActivities: true
-        # Shorter display name keeps Siri phrases natural: "Ask Hermes ..."
-        # instead of "Ask Hermes Voice ...". The in-app title is still
-        # "Hermes Voice" in MainView. Revert here if you prefer the longer
+        # Shorter display name keeps Siri phrases natural: "Ask Harness ..."
+        # instead of "Ask Harness Voice ...". The in-app title is still
+        # "Harness Voice" in MainView. Revert here if you prefer the longer
         # name on the home screen icon.
-        CFBundleDisplayName: Hermes
+        CFBundleDisplayName: Harness
         # App only uses standard HTTPS/TLS (exempt encryption), so declare
         # no non-exempt encryption. Skips the "Missing Compliance" prompt on
         # every TestFlight upload. If you ever add custom/proprietary crypto,
@@ -70,20 +70,20 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSMicrophoneUsageDescription: >-
-          Hermes Voice needs the microphone to capture what you say and send it
-          to your local Hermes Agent.
+          Harness Voice needs the microphone to capture what you say and send it
+          to your local agent.
         # Required since iOS 14 for any connection to a "local" network
         # address. This includes private RFC1918 ranges AND Tailscale
         # (100.64.0.0/10 CGNAT). Without this, iOS silently refuses local
         # network requests and surfaces the failure as a misleading ATS error.
         NSLocalNetworkUsageDescription: >-
-          Hermes Voice connects to your self-hosted backend over your local
-          network or Tailscale to talk to Hermes Agent.
+          Harness Voice connects to your self-hosted backend over your local
+          network or Tailscale to talk to your agent.
         # Required (iOS 14+) to browse for the backend via Bonjour. Without
         # this exact service type declared, NWBrowser/NetService silently
         # return zero results — even with local-network permission granted.
         NSBonjourServices:
-          - _hermes-voice._tcp
+          - _harness-voice._tcp
         # Personal app talking to a self-hosted backend over LAN/Tailscale —
         # both are plain HTTP. Apple's NSAllowsLocalNetworking flag does NOT
         # cover Tailscale's 100.64.0.0/10 CGNAT range, so we open ATS fully.
@@ -98,7 +98,7 @@ targets:
           UIApplicationSupportsMultipleScenes: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.finklea.hermesvoice
+        PRODUCT_BUNDLE_IDENTIFIER: dev.finklea.harnessvoice
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO
         GENERATE_INFOPLIST_FILE: NO
@@ -113,14 +113,14 @@ targets:
     info:
       path: HermesVoiceWatch/Info.plist
       properties:
-        CFBundleDisplayName: Hermes
+        CFBundleDisplayName: Harness
         WKApplication: true
         WKWatchOnly: false
         # Companion-relayed: this Watch app pairs with the iPhone bundle.
         # Voice requests flow Watch -> iPhone -> backend.
-        WKCompanionAppBundleIdentifier: dev.finklea.hermesvoice
+        WKCompanionAppBundleIdentifier: dev.finklea.harnessvoice
         NSMicrophoneUsageDescription: >-
-          Hermes Voice needs the microphone to capture what you say.
+          Harness Voice needs the microphone to capture what you say.
         # Same Tailscale-friendly ATS posture as the iOS side, in case the
         # Watch ever talks to the backend directly.
         NSAppTransportSecurity:
@@ -128,7 +128,7 @@ targets:
           NSAllowsLocalNetworking: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.finklea.hermesvoice.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: dev.finklea.harnessvoice.watchkitapp
         TARGETED_DEVICE_FAMILY: "4"
         GENERATE_INFOPLIST_FILE: NO
         SUPPORTS_MACCATALYST: NO
@@ -146,12 +146,12 @@ targets:
     info:
       path: HermesVoiceWidget/Info.plist
       properties:
-        CFBundleDisplayName: Hermes
+        CFBundleDisplayName: Harness
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.finklea.hermesvoice.widget
+        PRODUCT_BUNDLE_IDENTIFIER: dev.finklea.harnessvoice.widget
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: NO
         SUPPORTS_MACCATALYST: NO

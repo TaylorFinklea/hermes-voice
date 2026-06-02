@@ -45,15 +45,15 @@ struct SiriSession {
     }
 }
 
-/// The Siri-invocable intent. Users say "Hey Siri, ask Hermes <question>".
+/// The Siri-invocable intent. Users say "Hey Siri, ask Harness <question>".
 /// Returns the assistant's text as a spoken dialog (system TTS).
 struct AskHermesIntent: AppIntent {
-    static var title: LocalizedStringResource = "Ask Hermes"
+    static var title: LocalizedStringResource = "Ask Harness"
     // NOTE: Apple rejects App Intent descriptions that reference Apple
     // product/OS names ("Mac", "iPhone", etc.) — ITMS-90626. Keep this
     // platform-name-free.
     static var description = IntentDescription(
-        "Ask Hermes anything. Sends your question to your self-hosted Hermes agent and speaks the reply.",
+        "Ask your agent anything. Sends your question to your self-hosted agent and speaks the reply.",
         categoryName: "Voice"
     )
 
@@ -64,19 +64,19 @@ struct AskHermesIntent: AppIntent {
 
     @Parameter(
         title: "Question",
-        description: "What to ask Hermes.",
-        requestValueDialog: "What should I ask Hermes?"
+        description: "What to ask your agent.",
+        requestValueDialog: "What should I ask?"
     )
     var prompt: String
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Ask Hermes \(\.$prompt)")
+        Summary("Ask \(\.$prompt)")
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let config = SiriBackendConfig.load()
         guard !config.backendURL.isEmpty else {
-            return .result(dialog: "Hermes Voice isn't configured yet. Open the Hermes app and set your backend URL first.")
+            return .result(dialog: "Harness Voice isn't configured yet. Open the Harness app and set your backend URL first.")
         }
 
         let api = HermesVoiceAPI(baseURL: config.backendURL, authToken: config.authToken)
@@ -86,13 +86,13 @@ struct AskHermesIntent: AppIntent {
             let response = try await api.sendText(prompt, sessionId: session?.id)
             SiriSession.save(response.sessionId)
             let spoken = response.assistantText.isEmpty
-                ? "Hermes didn't have anything to say."
+                ? "The agent didn't have anything to say."
                 : response.assistantText
             return .result(dialog: IntentDialog(stringLiteral: spoken))
         } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code == 401 {
-            return .result(dialog: "Hermes is rejecting my auth token. Check the app's settings.")
+            return .result(dialog: "The backend is rejecting my auth token. Check the app's settings.")
         } catch {
-            return .result(dialog: "Sorry, I couldn't reach Hermes. \(error.localizedDescription)")
+            return .result(dialog: "Sorry, I couldn't reach the backend. \(error.localizedDescription)")
         }
     }
 }
@@ -106,13 +106,13 @@ struct AskHermesIntent: AppIntent {
 /// then prompts "What should I ask Hermes?" via the parameter's
 /// `requestValueDialog`. Two-step interaction:
 ///
-///   You: "Hey Siri, ask Hermes"
-///   Siri: "What should I ask Hermes?"
+///   You: "Hey Siri, ask Harness"
+///   Siri: "What should I ask?"
 ///   You: "What time is sunset tonight?"
-///   Siri: (speaks Hermes' reply)
+///   Siri: (speaks the agent's reply)
 ///
 /// The `\(.applicationName)` token resolves to CFBundleDisplayName, which
-/// is "Hermes" (see project.yml).
+/// is "Harness" (see project.yml).
 struct HermesVoiceShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -122,7 +122,7 @@ struct HermesVoiceShortcuts: AppShortcutsProvider {
                 "Tell \(.applicationName)",
                 "Talk to \(.applicationName)",
             ],
-            shortTitle: "Ask Hermes",
+            shortTitle: "Ask Harness",
             systemImageName: "mic.fill"
         )
     }

@@ -3,24 +3,24 @@
         "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Auto-starting LaunchAgent for the Hermes Voice backend.
+    <!-- Auto-starting LaunchAgent for the Harness Voice backend.
 
          Install:
-           cp dev.finklea.hermesvoice.backend.plist ~/Library/LaunchAgents/
+           cp dev.finklea.harnessvoice.backend.plist ~/Library/LaunchAgents/
            launchctl bootstrap gui/$(id -u) \
-             ~/Library/LaunchAgents/dev.finklea.hermesvoice.backend.plist
-           launchctl kickstart -k gui/$(id -u)/dev.finklea.hermesvoice.backend
+             ~/Library/LaunchAgents/dev.finklea.harnessvoice.backend.plist
+           launchctl kickstart -k gui/$(id -u)/dev.finklea.harnessvoice.backend
 
          Stop / reload:
            launchctl bootout gui/$(id -u) \
-             ~/Library/LaunchAgents/dev.finklea.hermesvoice.backend.plist
+             ~/Library/LaunchAgents/dev.finklea.harnessvoice.backend.plist
 
          Tail logs:
-           tail -F /tmp/hermes-voice.log
+           tail -F /tmp/harness-voice.log
     -->
 
     <key>Label</key>
-    <string>dev.finklea.hermesvoice.backend</string>
+    <string>dev.finklea.harnessvoice.backend</string>
 
     <key>ProgramArguments</key>
     <array>
@@ -64,9 +64,9 @@
     <integer>10</integer>
 
     <key>StandardOutPath</key>
-    <string>/tmp/hermes-voice.log</string>
+    <string>/tmp/harness-voice.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/hermes-voice.log</string>
+    <string>/tmp/harness-voice.log</string>
 
     <!-- Be a polite background process -->
     <key>ProcessType</key>

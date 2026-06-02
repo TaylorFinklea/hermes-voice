@@ -14,7 +14,7 @@ Getting Hermes Voice onto TestFlight does triple duty: it registers the App ID
 
 1. <https://appstoreconnect.apple.com/apps> → **+** → New App
 2. Platform: iOS. Name: "Hermes Voice" (or whatever; can differ from bundle).
-3. Bundle ID: select/create `dev.finklea.hermesvoice`. If it's not in the
+3. Bundle ID: select/create `dev.finklea.harnessvoice`. If it's not in the
    dropdown, register it first at
    <https://developer.apple.com/account/resources/identifiers/list> — and
    when you do, **check the Push Notifications capability**.
@@ -70,7 +70,7 @@ Now that the App ID has Push enabled:
 1. <https://developer.apple.com/account/resources/authkeys/list> → **+**
 2. Name "Hermes Voice push", check **Apple Push Notifications service (APNs)**.
    To scope to just this app, choose the topic restriction and select
-   `dev.finklea.hermesvoice`. (If you'd rather a team-wide key, leave it
+   `dev.finklea.harnessvoice`. (If you'd rather a team-wide key, leave it
    unrestricted — works for all your apps but less least-privilege.)
 3. Register → Download the `.p8` (one-time). Note the Key ID.
 4. Place it:
@@ -88,7 +88,7 @@ never reads your .env):
 APNS_KEY_PATH=/Users/tfinklea/.hermes-voice/apns-key.p8
 APNS_KEY_ID=<10-char Key ID>
 APNS_TEAM_ID=K7CBQW6MPG
-APNS_BUNDLE_ID=dev.finklea.hermesvoice
+APNS_BUNDLE_ID=dev.finklea.harnessvoice
 APNS_USE_SANDBOX=false        # TestFlight builds use PRODUCTION APNs
 ```
 

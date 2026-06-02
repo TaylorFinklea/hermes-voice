@@ -1,6 +1,6 @@
-# Hermes Voice
+# Harness Voice
 
-Voice-native iPhone front-end for the local Hermes Agent. Push-to-talk on the phone, Hermes does the actual operating on the Mac, audio answer plays back. Built to replace the rough Telegram-voice experience with something dedicated.
+Voice-native iPhone front-end for a local coding agent (Hermes, Claude Code, Codex, or OpenCode). Push-to-talk on the phone, Hermes does the actual operating on the Mac, audio answer plays back. Built to replace the rough Telegram-voice experience with something dedicated.
 
 ## Architecture
 
@@ -102,19 +102,19 @@ login and respawns on crash. A second LaunchAgent handles cert renewal on a
 
 ```bash
 # Backend service
-cp backend/launchd/dev.finklea.hermesvoice.backend.plist ~/Library/LaunchAgents/
+cp backend/launchd/dev.finklea.harnessvoice.backend.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) \
-  ~/Library/LaunchAgents/dev.finklea.hermesvoice.backend.plist
+  ~/Library/LaunchAgents/dev.finklea.harnessvoice.backend.plist
 
 # Cert renewal (every 30 days)
-cp backend/launchd/dev.finklea.hermesvoice.cert-renew.plist ~/Library/LaunchAgents/
+cp backend/launchd/dev.finklea.harnessvoice.cert-renew.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) \
-  ~/Library/LaunchAgents/dev.finklea.hermesvoice.cert-renew.plist
+  ~/Library/LaunchAgents/dev.finklea.harnessvoice.cert-renew.plist
 ```
 
-Verify it's running: `launchctl print gui/$(id -u)/dev.finklea.hermesvoice.backend`
-Tail logs: `tail -F /tmp/hermes-voice.log`
-Force a cert renewal now: `launchctl kickstart -k gui/$(id -u)/dev.finklea.hermesvoice.cert-renew`
+Verify it's running: `launchctl print gui/$(id -u)/dev.finklea.harnessvoice.backend`
+Tail logs: `tail -F /tmp/harness-voice.log`
+Force a cert renewal now: `launchctl kickstart -k gui/$(id -u)/dev.finklea.harnessvoice.cert-renew`
 
 The iOS app's Settings → Diagnostics screen shows "Backend last seen" so you
 can spot the moment it goes unreachable.

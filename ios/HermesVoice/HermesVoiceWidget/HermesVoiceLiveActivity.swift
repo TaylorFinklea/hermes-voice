@@ -53,7 +53,7 @@ struct HermesVoiceLiveActivity: Widget {
             } minimal: {
                 PhaseGlyph(phase: context.state.phase)
             }
-            .widgetURL(URL(string: "hermesvoice://turn"))
+            .widgetURL(URL(string: "harnessvoice://turn"))
             .keylineTint(HVColor.amber)
         }
     }

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Hermes</string>
+	<string>Harness</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -28,11 +28,11 @@
 		<true/>
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Hermes Voice needs the microphone to capture what you say.</string>
+	<string>Harness Voice needs the microphone to capture what you say.</string>
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>dev.finklea.hermesvoice</string>
+	<string>dev.finklea.harnessvoice</string>
 	<key>WKWatchOnly</key>
 	<false/>
 </dict>

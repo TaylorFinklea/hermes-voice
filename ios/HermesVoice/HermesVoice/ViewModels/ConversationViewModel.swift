@@ -17,7 +17,7 @@ final class ConversationViewModel: ObservableObject {
             case .idle: return "Ready"
             case .recording: return "Recording…"
             case .sending: return "Sending…"
-            case .thinking: return "Hermes is thinking…"
+            case .thinking: return "Thinking…"
             case .speaking: return "Speaking…"
             case .error(let msg): return "Error: \(msg)"
             }

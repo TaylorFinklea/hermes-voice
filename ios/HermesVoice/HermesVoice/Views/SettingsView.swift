@@ -118,7 +118,7 @@ struct SettingsView: View {
         } header: {
             sectionHeader("RECURRING MESSAGES")
         } footer: {
-            Text("Recurring asks Hermes runs on a cadence (e.g., \"give me the weather\" every 5 minutes). Voice creation (\"every 5 min update me on X\") lands in Phase C.")
+            Text("Recurring asks your agent runs on a cadence (e.g., \"give me the weather\" every 5 minutes). Voice creation (\"every 5 min update me on X\") lands in Phase C.")
                 .font(HVFont.captionTiny)
                 .foregroundStyle(HVColor.creamDim)
         }

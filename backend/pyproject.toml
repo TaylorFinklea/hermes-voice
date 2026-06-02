@@ -1,7 +1,7 @@
 [project]
-name = "hermes-voice-backend"
+name = "harness-voice-backend"
 version = "0.1.0"
-description = "Local backend for the Hermes Voice iOS app"
+description = "Local backend for the Harness Voice iOS app"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

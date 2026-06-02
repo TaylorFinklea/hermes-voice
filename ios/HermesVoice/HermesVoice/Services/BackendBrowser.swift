@@ -6,13 +6,13 @@ import Network
 /// canonical host before resolving.
 struct DiscoveredBackend: Identifiable, Hashable {
     let id = UUID()
-    let name: String          // Bonjour instance name, e.g. "Hermes Voice"
-    let serviceType: String   // "_hermes-voice._tcp." (trailing dot, from NWBrowser)
+    let name: String          // Bonjour instance name, e.g. "Harness Voice"
+    let serviceType: String   // "_harness-voice._tcp." (trailing dot, from NWBrowser)
     let domain: String        // "local."
     var txt: [String: String] = [:]
 }
 
-/// Discovers `_hermes-voice._tcp` on the local network and resolves a chosen
+/// Discovers `_harness-voice._tcp` on the local network and resolves a chosen
 /// service into a usable base URL.
 ///
 /// Hybrid approach (Apple-DTS-recommended): `NWBrowser` browses (modern, gives
@@ -25,7 +25,7 @@ struct DiscoveredBackend: Identifiable, Hashable {
 /// backend advertises in TXT (e.g. a Tailscale MagicDNS name) so an HTTPS cert
 /// validates; otherwise the resolved `.local` host is used.
 ///
-/// Requires `NSBonjourServices` listing `_hermes-voice._tcp` in Info.plist —
+/// Requires `NSBonjourServices` listing `_harness-voice._tcp` in Info.plist —
 /// without it, browsing silently returns nothing.
 @MainActor
 final class BackendBrowser: NSObject, ObservableObject {
@@ -46,7 +46,7 @@ final class BackendBrowser: NSObject, ObservableObject {
         let params = NWParameters()
         params.includePeerToPeer = false
         let descriptor = NWBrowser.Descriptor.bonjourWithTXTRecord(
-            type: "_hermes-voice._tcp", domain: "local."
+            type: "_harness-voice._tcp", domain: "local."
         )
         let browser = NWBrowser(for: descriptor, using: params)
         browser.browseResultsChangedHandler = { [weak self] found, _ in

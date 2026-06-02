@@ -1,6 +1,6 @@
 """Advertise the backend over Bonjour/mDNS for zero-config LAN discovery.
 
-The iOS app browses for `_hermes-voice._tcp` on the local network and fills in
+The iOS app browses for `_harness-voice._tcp` on the local network and fills in
 the backend URL automatically. mDNS is link-local only — it does NOT traverse
 Tailscale — so this helps the same-Wi-Fi case; the remote path stays a
 manually-entered Tailscale MagicDNS hostname.
@@ -17,7 +17,7 @@ import socket
 
 logger = logging.getLogger("hermes_voice")
 
-SERVICE_TYPE = "_hermes-voice._tcp.local."
+SERVICE_TYPE = "_harness-voice._tcp.local."
 
 
 def _in_cgnat(ip: str) -> bool:

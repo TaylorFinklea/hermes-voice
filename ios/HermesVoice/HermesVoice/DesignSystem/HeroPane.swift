@@ -60,7 +60,7 @@ private struct HeroFirstLaunch: View {
                     .font(HVFont.largeTitle)
                     .foregroundStyle(HVColor.cream)
                     .multilineTextAlignment(.center)
-                Text("Hermes runs on your Mac and listens through this app. Press and hold the mic, say what you need, release.")
+                Text("Your agent runs on your Mac and listens through this app. Press and hold the mic, say what you need, release.")
                     .font(HVFont.bodyDim)
                     .foregroundStyle(HVColor.creamDim)
                     .multilineTextAlignment(.center)
@@ -454,11 +454,11 @@ private struct HeroError: View {
                     Text("!").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isTimeout ? "Hermes didn't reply in time." : "Backend unreachable.")
+                    Text(isTimeout ? "The agent didn't reply in time." : "Backend unreachable.")
                         .font(HVFont.caption.weight(.semibold))
                         .foregroundStyle(HVColor.cream)
                     Text(isTimeout
-                         ? "The backend answered (ping + history work), but the agent was slow or stuck. Tap retry, or check Hermes on your Mac."
+                         ? "The backend answered (ping + history work), but the agent was slow or stuck. Tap retry, or check the agent on your Mac."
                          : message)
                         .font(HVFont.captionTiny)
                         .foregroundStyle(HVColor.creamDim)
@@ -499,7 +499,7 @@ private struct HeroTextInput: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 HStack(spacing: 6) {
-                    Text("HERMES TYPING")
+                    Text("TYPING")
                         .font(HVFont.chip)
                         .tracking(0.7)
                         .foregroundStyle(HVColor.creamDim)
@@ -513,7 +513,7 @@ private struct HeroTextInput: View {
                     .foregroundStyle(HVColor.creamDim)
             }
 
-            Text("When you can't talk — same Hermes, typed.")
+            Text("When you can't talk — same agent, typed.")
                 .font(HVFont.captionTiny)
                 .tracking(0.4)
                 .foregroundStyle(HVColor.creamDim)

@@ -10,16 +10,16 @@
          we kick the backend so uvicorn loads the new cert.
 
          Install:
-           cp dev.finklea.hermesvoice.cert-renew.plist ~/Library/LaunchAgents/
+           cp dev.finklea.harnessvoice.cert-renew.plist ~/Library/LaunchAgents/
            launchctl bootstrap gui/$(id -u) \
-             ~/Library/LaunchAgents/dev.finklea.hermesvoice.cert-renew.plist
+             ~/Library/LaunchAgents/dev.finklea.harnessvoice.cert-renew.plist
 
          Force-run now:
-           launchctl kickstart -k gui/$(id -u)/dev.finklea.hermesvoice.cert-renew
+           launchctl kickstart -k gui/$(id -u)/dev.finklea.harnessvoice.cert-renew
     -->
 
     <key>Label</key>
-    <string>dev.finklea.hermesvoice.cert-renew</string>
+    <string>dev.finklea.harnessvoice.cert-renew</string>
 
     <key>ProgramArguments</key>
     <array>
@@ -35,8 +35,8 @@
     <false/>
 
     <key>StandardOutPath</key>
-    <string>/tmp/hermes-voice-cert-renew.log</string>
+    <string>/tmp/harness-voice-cert-renew.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/hermes-voice-cert-renew.log</string>
+    <string>/tmp/harness-voice-cert-renew.log</string>
 </dict>
 </plist>

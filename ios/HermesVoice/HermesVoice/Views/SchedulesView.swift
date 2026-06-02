@@ -96,7 +96,7 @@ struct SchedulesView: View {
             Text("No schedules yet")
                 .font(HVFont.body.weight(.semibold))
                 .foregroundStyle(HVColor.cream)
-            Text("Tap + to create a recurring message. Once voice creation ships, you'll also be able to say \"every 5 min give me the weather\" to Hermes directly.")
+            Text("Tap + to create a recurring message. Once voice creation ships, you'll also be able to say \"every 5 min give me the weather\" to your agent directly.")
                 .font(HVFont.captionTiny)
                 .foregroundStyle(HVColor.creamDim)
                 .multilineTextAlignment(.center)
@@ -326,9 +326,9 @@ struct ScheduleEditView: View {
                             .lineLimit(3...8)
                             .listRowBackground(HVColor.creamSurface)
                     } header: {
-                        sectionHeader("PROMPT TO HERMES")
+                        sectionHeader("PROMPT TO AGENT")
                     } footer: {
-                        Text("Exactly what gets sent to Hermes each fire. Keep it focused — no preamble.")
+                        Text("Exactly what gets sent to your agent each fire. Keep it focused — no preamble.")
                             .font(HVFont.captionTiny)
                             .foregroundStyle(HVColor.creamDim)
                     }

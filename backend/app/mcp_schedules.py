@@ -1,6 +1,6 @@
-"""Stdio MCP server exposing Hermes Voice schedules to the Hermes Agent.
+"""Stdio MCP server exposing Harness Voice schedules to the Hermes Agent.
 
-Hermes Agent registers this as an MCP server (`hermes mcp add hermes-voice
+Hermes Agent registers this as an MCP server (`hermes mcp add harness-voice
 --command uv --args run python -m app.mcp_schedules`). When the user says
 "every 5 min give me the weather," Hermes interprets the cadence + topic
 and calls `create_schedule` here, which POSTs to our REST backend.
@@ -71,7 +71,7 @@ def _client() -> httpx.AsyncClient:
     )
 
 
-server = FastMCP("hermes-voice-schedules")
+server = FastMCP("harness-voice-schedules")
 
 
 @server.tool()

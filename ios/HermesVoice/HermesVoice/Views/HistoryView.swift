@@ -70,7 +70,7 @@ struct HistoryView: View {
             Text("No conversations yet")
                 .font(HVFont.body.weight(.semibold))
                 .foregroundStyle(HVColor.cream)
-            Text("Talk to Hermes from any device and conversations show up here.")
+            Text("Talk to your agent from any device and conversations show up here.")
                 .font(HVFont.captionTiny)
                 .foregroundStyle(HVColor.creamDim)
                 .multilineTextAlignment(.center)

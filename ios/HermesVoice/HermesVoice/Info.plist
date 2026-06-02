@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Hermes</string>
+	<string>Harness</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -31,12 +31,12 @@
 	</dict>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_hermes-voice._tcp</string>
+		<string>_harness-voice._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Hermes Voice connects to your self-hosted backend over your local network or Tailscale to talk to Hermes Agent.</string>
+	<string>Harness Voice connects to your self-hosted backend over your local network or Tailscale to talk to your agent.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Hermes Voice needs the microphone to capture what you say and send it to your local Hermes Agent.</string>
+	<string>Harness Voice needs the microphone to capture what you say and send it to your local agent.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

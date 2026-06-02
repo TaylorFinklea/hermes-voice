@@ -76,6 +76,17 @@ class ApprovalBroker:
         finally:
             turn.pending.pop(request_id, None)
 
+    def emit(self, turn_id: str, event: dict) -> None:
+        """Push an agent message event onto the turn's stream (no answer awaited).
+
+        Used by the SDK turn driver to interleave assistant text / tool-call /
+        done events with the approval/question requests on a single queue, so the
+        SSE generator can drain one channel.
+        """
+        turn = self._turns.get(turn_id)
+        if turn is not None:
+            turn.queue.put_nowait(event)
+
     def answer(self, turn_id: str, request_id: str, value: Any) -> bool:
         """Resolve a pending request with the client's answer. False if unknown."""
         turn = self._turns.get(turn_id)

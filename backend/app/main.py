@@ -260,6 +260,7 @@ def _register_routes(app: FastAPI) -> None:
                 session_id=body.session_id,
                 voice_id=body.voice_id,
                 tts_mode=body.tts,
+                mode=body.mode,
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
@@ -272,6 +273,7 @@ def _register_routes(app: FastAPI) -> None:
         voice_id: Annotated[str | None, Form()] = None,
         tts: Annotated[str | None, Form()] = None,
         harness: Annotated[str | None, Form()] = None,
+        mode: Annotated[str | None, Form()] = None,
     ) -> StreamingResponse:
         harness_client = _resolve_harness(app, harness)
         stt: STTProvider | None = app.state.stt
@@ -288,7 +290,8 @@ def _register_routes(app: FastAPI) -> None:
         return StreamingResponse(
             _stream_turn(
                 app, harness=harness_client,
-                user_text=user_text, session_id=session_id, voice_id=voice_id, tts_mode=tts
+                user_text=user_text, session_id=session_id, voice_id=voice_id,
+                tts_mode=tts, mode=mode,
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
@@ -715,6 +718,7 @@ async def _stream_turn(
     session_id: str | None,
     voice_id: str | None = None,
     tts_mode: str | None = None,
+    mode: str | None = None,
 ):
     """SSE event generator for a streaming turn.
 
@@ -729,6 +733,20 @@ async def _stream_turn(
 
     def sse(obj: dict) -> str:
         return f"data: {json.dumps(obj)}\n\n"
+
+    # Phase B: a WRITE turn on Claude goes through the SDK approval path — writes
+    # and commands pause for a voice yes/no, and the agent can ask the user
+    # questions. Reads still auto-approve. Other harnesses / read turns fall
+    # through to the standard streaming path below.
+    if mode == "write" and getattr(hermes, "bin", None) == "claude":
+        from .claude_sdk_turn import stream_claude_approval_turn
+
+        async for event in stream_claude_approval_turn(
+            app, user_text=user_text, session_id=session_id,
+            voice_id=voice_id, tts_mode=tts_mode,
+        ):
+            yield sse(event)
+        return
 
     yield sse({"type": "transcribed", "text": user_text})
     try:

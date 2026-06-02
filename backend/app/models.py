@@ -27,6 +27,10 @@ class TextRequest(BaseModel):
     # Which agent backs this turn (hermes / claude / codex / opencode). Omitted
     # → the backend's default harness. Mirrors the per-turn `tts` switch.
     harness: str | None = Field(default=None, max_length=40, pattern=r"^[a-z0-9_-]*$")
+    # "write" routes a Claude turn through the SDK approval path — writes and
+    # commands pause for a voice yes/no. "read"/omitted keeps the read-only or
+    # normal path. Only the streaming Claude path honors "write".
+    mode: str | None = Field(default=None, pattern=r"^(read|write)$")
 
 
 class ToolCallSummary(BaseModel):

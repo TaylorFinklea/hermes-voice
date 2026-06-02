@@ -4,9 +4,19 @@
 
 ## Active Branch
 
-`main` — working tree clean. Recent: `91d9997` harden live-turn recovery (review fixes, NOT yet in a TestFlight build), `f6da31b` Release 1.0 build 13, `dbfafee` live-turn visibility, `fbbce42` backend-stale diagnosis + build 12 UX.
+`main` — working tree clean. Recent: `aca730d` Rebrand → Harness Voice (P0), `91d9997` harden live-turn recovery (NOT yet in a TestFlight build), `f6da31b` Release 1.0 build 13, `dbfafee` live-turn visibility.
 
-## Last Session Summary
+## Harness Voice initiative (rebrand + multi-harness) — IN PROGRESS
+
+Spec: `.docs/ai/phases/harness-voice-multiharness-spec.md`. User decisions (2026-06-02): **full identity rebrand**, **shared workspace** `~/.harness-voice/workspace`, **workspace-write sandbox**, **per-turn `harness` param**, implement end-to-end.
+
+- **P0 Rebrand — DONE (`aca730d`).** Bundle id `dev.finklea.hermesvoice`→`dev.finklea.harnessvoice` (app/watch/widget, xcodegen-regenerated), display name Hermes→Harness, Bonjour `_harness-voice._tcp`, MCP `harness-voice-schedules`, package `harness-voice-backend`, launchd plists renamed, Live Activity URL scheme, release.sh, iOS UI/Siri copy. **KEPT (back-compat):** `HERMES_VOICE_*` env, `~/.hermes-voice` data dir, `X-Hermes-Voice-Token` header, repo dir path, Hermes-harness code identifiers (`HermesClient`/`hermes.py`/`hermes_bin`/`HERMES_*`), Xcode target/scheme/type codenames (so `release.sh -scheme HermesVoice` still works). Verified: iOS BUILD SUCCEEDED w/ new bundle id; backend 56/56. **App icon still winged-H (Hermes) — design follow-up.**
+  - **⚠️ ACTION REQUIRED before next TestFlight upload:** new bundle id = NEW App Store Connect app — create the app record + APNs key for `dev.finklea.harnessvoice` first, else `release.sh` upload fails.
+- **P1 Backend HarnessClient protocol + dispatch — NEXT.** Seam mapped: `create_app(hermes=…)`→`app.state.hermes`; `_run_turn`/`_stream_turn` read it; thread a `harness` param (mirror existing `tts` plumbing) + add registry/resolver + `/api/harnesses`. CONSTRAINT: keep `HermesClient` class name (conftest `FakeHermes(HermesClient)` + `test_providers` `HermesClient._parse` depend on it) — the "adapter" is the Protocol it satisfies, not a rename.
+- **P2 Claude/Codex/OpenCode adapters — verified all 3 installed + fit cleanly** (claude 2.1.160 `-p --output-format stream-json`; codex 0.136.0 `exec --json` + rollout JSONL; opencode 1.15.13 `run --format json` + `export`). All emit session_id + tool calls + final text in structured stdout (cleaner than Hermes). Best done via the parallel-adapter workflow. Per-adapter JSONL parse tests with fixtures.
+- **P3 iOS harness picker + per-turn param** (mirror `tts`/`voice_id` threading in HermesVoiceAPI + AppSettings.selectedHarness + SettingsView picker fed by `/api/harnesses` + harness-aware strings).
+
+## Prior Session Summary
 
 **Date**: 2026-06-02
 

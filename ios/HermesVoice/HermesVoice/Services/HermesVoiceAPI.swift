@@ -605,6 +605,52 @@ struct HermesVoiceAPI {
         }
     }
 
+    /// One existing session a harness can resume — surfaced in the attach picker.
+    /// Coding agents fill `cwd`/`title`; Hermes leaves them nil.
+    struct HarnessSession: Decodable, Identifiable, Equatable {
+        var id: String { sessionId }
+        let sessionId: String
+        let source: String
+        let startedAt: Double
+        let messageCount: Int
+        let toolCallCount: Int
+        let preview: String
+        let cwd: String?
+        let title: String?
+
+        enum CodingKeys: String, CodingKey {
+            case sessionId = "session_id"
+            case source
+            case startedAt = "started_at"
+            case messageCount = "message_count"
+            case toolCallCount = "tool_call_count"
+            case preview, cwd, title
+        }
+
+        /// Last path component of `cwd` (e.g. "/Users/me/git/foo" → "foo").
+        var repo: String? {
+            guard let cwd, !cwd.isEmpty else { return nil }
+            return URL(fileURLWithPath: cwd).lastPathComponent
+        }
+
+        /// Best single-line label: the agent's title if present, else the prompt.
+        var displayLabel: String {
+            if let title, !title.isEmpty { return title }
+            return preview.isEmpty ? sessionId : preview
+        }
+    }
+
+    func listHarnessSessions(harnessId: String, limit: Int = 30) async throws -> [HarnessSession] {
+        let url = try buildURL("/api/harnesses/\(harnessId)/sessions?limit=\(limit)")
+        let (data, response) = try await perform(URLRequest(url: url))
+        try Self.ensureOK(response, data: data)
+        do {
+            return try Self.decoder.decode([HarnessSession].self, from: data)
+        } catch {
+            throw APIError.decode(error)
+        }
+    }
+
     // MARK: - Internals
 
     private static let decoder: JSONDecoder = JSONDecoder()

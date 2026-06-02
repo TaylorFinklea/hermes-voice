@@ -48,6 +48,7 @@
 		C542A407B1975715438E1C68 /* WatchSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80CE6099662D4FB382235DF9 /* WatchSession.swift */; };
 		C98B8C1A809EFE9B7FE1B52D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1BB36C624F8D38FFA22276A /* SettingsView.swift */; };
 		D3EDAF70395A41A1A1F4DC51 /* ConversationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95073D71B1247389D55E2E90 /* ConversationViewModel.swift */; };
+		D750FF30F52D26DA799EE305 /* SessionBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7587FF7A3D13C302F4161182 /* SessionBrowserView.swift */; };
 		D82FDDCEA23FAA5D660D1429 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7F48F66BDE7FEFB5F8D93B14 /* Assets.xcassets */; };
 		D94DF2F83579D5B051A70FBE /* ConversationModeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 819511910350506C883E1FED /* ConversationModeController.swift */; };
 		DC0CFEA4BF16C8B3DC24F2AB /* AudioSessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715C6CEBF378666AD02ABB56 /* AudioSessionCoordinator.swift */; };
@@ -119,6 +120,7 @@
 		58B9A5FC3DB9A7AB2383F5ED /* BackendBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendBrowser.swift; sourceTree = "<group>"; };
 		71159F3B5BD1FDDED47FF2ED /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		715C6CEBF378666AD02ABB56 /* AudioSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionCoordinator.swift; sourceTree = "<group>"; };
+		7587FF7A3D13C302F4161182 /* SessionBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionBrowserView.swift; sourceTree = "<group>"; };
 		76D461D25CE61518A627C832 /* HermesVoice.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesVoice.entitlements; sourceTree = "<group>"; };
 		7A7B39A6513FE4F8FB7F9075 /* ConversationCaptureEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationCaptureEngine.swift; sourceTree = "<group>"; };
 		7F48F66BDE7FEFB5F8D93B14 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -196,6 +198,7 @@
 				9C4276ABED593A1B47F0F329 /* OnboardingView.swift */,
 				17D27F3D268D95B51D59B300 /* PushToTalkButton.swift */,
 				3FD0611B5E35BB66D8E090EE /* SchedulesView.swift */,
+				7587FF7A3D13C302F4161182 /* SessionBrowserView.swift */,
 				F1BB36C624F8D38FFA22276A /* SettingsView.swift */,
 				248F1323DED3121D4CA9EFC0 /* TranscriptView.swift */,
 			);
@@ -507,6 +510,7 @@
 				C4B6565A4C4D590A22DF9BE8 /* PhoneWatchBridge.swift in Sources */,
 				50AB90E3B58BF04A1B5B9D99 /* PushToTalkButton.swift in Sources */,
 				8A22DCC4A0C9B7114A1D91C7 /* SchedulesView.swift in Sources */,
+				D750FF30F52D26DA799EE305 /* SessionBrowserView.swift in Sources */,
 				C98B8C1A809EFE9B7FE1B52D /* SettingsView.swift in Sources */,
 				218DF712A568866AAE836A91 /* TranscriptView.swift in Sources */,
 				59704D53AD1D886AB38970DA /* VoiceRecorder.swift in Sources */,

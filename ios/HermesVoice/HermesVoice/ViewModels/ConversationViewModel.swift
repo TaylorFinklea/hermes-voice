@@ -39,6 +39,12 @@ final class ConversationViewModel: ObservableObject {
     }
     @Published private(set) var messages: [Message] = []
     @Published private(set) var sessionId: String? = nil
+
+    /// When attached to an existing coding-agent session, the repo we're driving
+    /// and whether it's read-only. Drives the header affordance so you always
+    /// know what voice is pointed at. Cleared by `reset()`.
+    @Published private(set) var attachedRepo: String? = nil
+    @Published private(set) var attachedReadOnly: Bool = false
     @Published private(set) var sendingPhase: SendingPhase = .uploading
     @Published private(set) var lastClipDuration: TimeInterval? = nil
 
@@ -481,6 +487,28 @@ final class ConversationViewModel: ObservableObject {
     func reset() {
         messages.removeAll()
         sessionId = nil
+        attachedRepo = nil
+        attachedReadOnly = false
+        state = .idle
+    }
+
+    /// Attach the live conversation to an existing coding-agent session (e.g. a
+    /// Claude Code session you started in your terminal). Routes subsequent voice
+    /// turns to that harness + session id; the backend resumes it in its own
+    /// repo (read-only in this phase). Generalizes `resume(sessionId:)`.
+    func attach(sessionId: String, harness: String, repo: String?, readOnly: Bool) {
+        guard !sessionId.isEmpty else { return }
+        settings.selectedHarness = harness
+        self.sessionId = sessionId
+        attachedRepo = repo
+        attachedReadOnly = readOnly
+        let place = repo.map { "in \($0)" } ?? "session"
+        let mode = readOnly ? " · read-only" : ""
+        messages.append(Message(
+            role: .toolCall,
+            text: "attached to \(harness) \(place)\(mode)",
+            toolCall: ToolCallDetail(name: "session", preview: "attached", ok: true)
+        ))
         state = .idle
     }
 

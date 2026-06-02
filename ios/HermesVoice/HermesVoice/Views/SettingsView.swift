@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var conversation: ConversationViewModel
     @Environment(\.dismiss) private var dismiss
 
     // Local mirrors so typing in the URL field doesn't cascade through
@@ -249,6 +250,23 @@ struct SettingsView: View {
                     .foregroundStyle(HVColor.creamDim)
                     .listRowBackground(HVColor.creamSurface)
             }
+            if isCodingHarness(settings.selectedHarness) {
+                NavigationLink {
+                    SessionBrowserView(
+                        harnessId: settings.selectedHarness,
+                        harnessName: harnessDisplayName(settings.selectedHarness),
+                        onAttached: { dismiss() }
+                    )
+                    .environmentObject(settings)
+                    .environmentObject(conversation)
+                } label: {
+                    Label("Attach to a session", systemImage: "link")
+                        .font(HVFont.body)
+                        .foregroundStyle(HVColor.cream)
+                }
+                .tint(HVColor.amber)
+                .listRowBackground(HVColor.creamSurface)
+            }
         } header: {
             sectionHeader("AGENT")
         } footer: {
@@ -276,6 +294,14 @@ struct SettingsView: View {
         } catch {
             harnessesError = "Couldn't load agents (is the backend reachable?)."
         }
+    }
+
+    private func isCodingHarness(_ id: String) -> Bool {
+        ["claude", "codex", "opencode"].contains(id)
+    }
+
+    private func harnessDisplayName(_ id: String) -> String {
+        harnesses.first(where: { $0.harnessId == id })?.name ?? id.capitalized
     }
 
     @ViewBuilder

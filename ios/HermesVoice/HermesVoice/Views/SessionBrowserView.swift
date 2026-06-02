@@ -18,9 +18,24 @@ struct SessionBrowserView: View {
     @State private var sessions: [HermesVoiceAPI.HarnessSession] = []
     @State private var loading = false
     @State private var error = ""
+    @State private var writeMode = false
 
     var body: some View {
         List {
+            Section {
+                Toggle(isOn: $writeMode) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Write mode")
+                            .font(HVFont.body)
+                            .foregroundStyle(HVColor.cream)
+                        Text("Let it edit files + run commands — each change asks for your approval.")
+                            .font(HVFont.captionTiny)
+                            .foregroundStyle(HVColor.creamDim)
+                    }
+                }
+                .tint(HVColor.amber)
+                .listRowBackground(HVColor.creamSurface)
+            }
             Section {
                 if loading {
                     HStack(spacing: 8) {
@@ -49,7 +64,7 @@ struct SessionBrowserView: View {
             } header: {
                 Text("\(harnessName.uppercased()) SESSIONS")
             } footer: {
-                Text("Continue one of your \(harnessName) sessions by voice. Attached sessions are read-only — voice editing arrives with approval cards.")
+                Text("Continue one of your \(harnessName) sessions by voice. Read-only by default; turn on Write mode to let it edit, with each change gated by an approval card.")
                     .font(HVFont.captionTiny)
                     .foregroundStyle(HVColor.creamDim)
             }
@@ -86,7 +101,7 @@ struct SessionBrowserView: View {
 
     private func attach(_ s: HermesVoiceAPI.HarnessSession) {
         conversation.attach(
-            sessionId: s.sessionId, harness: harnessId, repo: s.repo, readOnly: true
+            sessionId: s.sessionId, harness: harnessId, repo: s.repo, readOnly: !writeMode
         )
         onAttached()
     }

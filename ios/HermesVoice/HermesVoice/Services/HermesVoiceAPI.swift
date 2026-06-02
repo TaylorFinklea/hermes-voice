@@ -400,21 +400,28 @@ struct HermesVoiceAPI {
         case audio(path: String)
         case done(sessionId: String)
         case failed(String)
+        // Phase B: bidirectional approval/question events. `turn` carries the
+        // turn_id the client POSTs answers to; approvalRequest/question pause the
+        // turn until the user answers.
+        case turn(turnId: String)
+        case approvalRequest(requestId: String, tool: String, title: String, preview: String)
+        case question(requestId: String, prompt: String, options: [String], multi: Bool)
     }
 
     func streamText(
-        _ text: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil, harness: String? = nil
+        _ text: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil, harness: String? = nil, mode: String? = nil
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         var payload: [String: Any] = ["text": text]
         if let sessionId, !sessionId.isEmpty { payload["session_id"] = sessionId }
         if let voiceId, !voiceId.isEmpty { payload["voice_id"] = voiceId }
         if let tts, !tts.isEmpty { payload["tts"] = tts }
         if let harness, !harness.isEmpty { payload["harness"] = harness }
+        if let mode, !mode.isEmpty { payload["mode"] = mode }
         return events(path: "/api/text/stream", jsonBody: payload)
     }
 
     func streamAudio(
-        fileURL: URL, mimeType: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil, harness: String? = nil
+        fileURL: URL, mimeType: String, sessionId: String?, voiceId: String? = nil, tts: String? = nil, harness: String? = nil, mode: String? = nil
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         let boundary = "----HermesVoiceBoundary\(UUID().uuidString)"
         var body = Data()
@@ -444,6 +451,9 @@ struct HermesVoiceAPI {
         }
         if let harness, !harness.isEmpty {
             appendPart(name: "harness", data: harness.data(using: .utf8)!)
+        }
+        if let mode, !mode.isEmpty {
+            appendPart(name: "mode", data: mode.data(using: .utf8)!)
         }
         body.append("--\(boundary)--\(crlf)".data(using: .utf8)!)
         return events(path: "/api/audio/stream", multipart: (boundary, body))
@@ -530,9 +540,39 @@ struct HermesVoiceAPI {
             return .done(sessionId: obj["session_id"] as? String ?? "")
         case "error":
             return .failed(obj["detail"] as? String ?? "stream error")
+        case "turn":
+            return .turn(turnId: obj["turn_id"] as? String ?? "")
+        case "approval_request":
+            return .approvalRequest(
+                requestId: obj["request_id"] as? String ?? "",
+                tool: obj["tool"] as? String ?? "",
+                title: obj["title"] as? String ?? "",
+                preview: obj["preview"] as? String ?? ""
+            )
+        case "question":
+            return .question(
+                requestId: obj["request_id"] as? String ?? "",
+                prompt: obj["prompt"] as? String ?? "",
+                options: (obj["options"] as? [String]) ?? [],
+                multi: obj["multi"] as? Bool ?? false
+            )
         default:
             return nil
         }
+    }
+
+    /// Answer a mid-turn approval/question (Phase B). `value` is "allow"/"deny"
+    /// for an approval or the selected option(s) for a question.
+    func answerTurn(turnId: String, requestId: String, value: Any) async throws {
+        let url = try buildURL("/api/turns/\(turnId)/answer")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(
+            withJSONObject: ["request_id": requestId, "value": value]
+        )
+        let (data, response) = try await perform(req)
+        try Self.ensureOK(response, data: data)
     }
 
     /// Build the absolute URL for a backend path. Used by AVPlayer to stream

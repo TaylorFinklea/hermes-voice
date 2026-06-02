@@ -45,6 +45,32 @@ final class ConversationViewModel: ObservableObject {
     /// know what voice is pointed at. Cleared by `reset()`.
     @Published private(set) var attachedRepo: String? = nil
     @Published private(set) var attachedReadOnly: Bool = false
+
+    // Phase B: a pending voice-approval ("Claude wants to edit X — yes/no") or a
+    // structured question the agent asked. The turn is paused until answered.
+    struct PendingApproval: Equatable {
+        let turnId: String
+        let requestId: String
+        let title: String
+        let preview: String
+    }
+    struct PendingQuestion: Equatable {
+        let turnId: String
+        let requestId: String
+        let prompt: String
+        let options: [String]
+        let multi: Bool
+    }
+    @Published private(set) var pendingApproval: PendingApproval?
+    @Published private(set) var pendingQuestion: PendingQuestion?
+    private var currentTurnId: String?
+
+    /// "write" only for an attached coding session put in write mode — routes the
+    /// turn through the SDK approval path (writes pause for a voice yes/no).
+    /// Otherwise nil (read-only attach / normal turns).
+    private var currentMode: String? {
+        (attachedRepo != nil && !attachedReadOnly) ? "write" : nil
+    }
     @Published private(set) var sendingPhase: SendingPhase = .uploading
     @Published private(set) var lastClipDuration: TimeInterval? = nil
 
@@ -153,6 +179,7 @@ final class ConversationViewModel: ObservableObject {
         let voiceId = settings.serverVoiceId
         let ttsMode: String? = settings.isLocalVoiceSelected ? "none" : nil
         let harnessId = settings.selectedHarness
+        let modeId = currentMode
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
 
@@ -165,7 +192,7 @@ final class ConversationViewModel: ObservableObject {
                     guard !trimmed.isEmpty else { self.state = .idle; return }  // heard nothing
                     self.messages.append(Message(role: .user, text: trimmed))
                     self.state = .thinking
-                    await self.streamTextTurnBody(trimmed, sessionId: currentSession, voiceId: voiceId, tts: ttsMode, harness: harnessId)
+                    await self.streamTextTurnBody(trimmed, sessionId: currentSession, voiceId: voiceId, tts: ttsMode, harness: harnessId, mode: modeId)
                     return
                 } catch is CancellationError {
                     VoiceRecorder.discard(url)
@@ -190,7 +217,7 @@ final class ConversationViewModel: ObservableObject {
                 try await self.consumeTurn(
                     api.streamAudio(
                         fileURL: url, mimeType: "audio/m4a",
-                        sessionId: currentSession, voiceId: voiceId, tts: ttsMode, harness: harnessId
+                        sessionId: currentSession, voiceId: voiceId, tts: ttsMode, harness: harnessId, mode: modeId
                     ),
                     appendUserFromTranscribed: true
                 )
@@ -219,9 +246,10 @@ final class ConversationViewModel: ObservableObject {
         let voiceId = settings.serverVoiceId
         let ttsMode: String? = settings.isLocalVoiceSelected ? "none" : nil
         let harnessId = settings.selectedHarness
+        let modeId = currentMode
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.streamTextTurnBody(trimmed, sessionId: currentSession, voiceId: voiceId, tts: ttsMode, harness: harnessId)
+            await self.streamTextTurnBody(trimmed, sessionId: currentSession, voiceId: voiceId, tts: ttsMode, harness: harnessId, mode: modeId)
         }
         currentTurn = task
         await task.value
@@ -232,10 +260,10 @@ final class ConversationViewModel: ObservableObject {
     /// Does NOT create its own Task — the caller owns `currentTurn` so barge-in
     /// cancels the right thing. Falls back to a single-shot text POST if the
     /// streaming endpoint is unavailable; swallows cancellation.
-    private func streamTextTurnBody(_ trimmed: String, sessionId: String?, voiceId: String, tts: String?, harness: String?) async {
+    private func streamTextTurnBody(_ trimmed: String, sessionId: String?, voiceId: String, tts: String?, harness: String?, mode: String?) async {
         do {
             try await consumeTurn(
-                api.streamText(trimmed, sessionId: sessionId, voiceId: voiceId, tts: tts, harness: harness),
+                api.streamText(trimmed, sessionId: sessionId, voiceId: voiceId, tts: tts, harness: harness, mode: mode),
                 appendUserFromTranscribed: false
             )
         } catch is CancellationError {
@@ -337,6 +365,23 @@ final class ConversationViewModel: ObservableObject {
             case .failed(let detail):
                 state = .error(detail)
                 return
+            case .turn(let id):
+                currentTurnId = id.isEmpty ? nil : id
+            case .approvalRequest(let reqId, _, let title, let preview):
+                if let tid = currentTurnId {
+                    pendingApproval = PendingApproval(
+                        turnId: tid, requestId: reqId, title: title, preview: preview
+                    )
+                    speakPrompt(title)
+                }
+            case .question(let reqId, let prompt, let options, let multi):
+                if let tid = currentTurnId {
+                    pendingQuestion = PendingQuestion(
+                        turnId: tid, requestId: reqId, prompt: prompt,
+                        options: options, multi: multi
+                    )
+                    speakPrompt(prompt)
+                }
             }
         }
         if !sawAssistant,
@@ -465,6 +510,7 @@ final class ConversationViewModel: ObservableObject {
     /// Recording → discards the captured audio. Sending/thinking → cancels
     /// the URL session. Speaking → stops playback.
     func cancelCurrentTurn() {
+        clearPending()
         switch state {
         case .recording:
             if let url = recorder.stop() {
@@ -489,6 +535,7 @@ final class ConversationViewModel: ObservableObject {
         sessionId = nil
         attachedRepo = nil
         attachedReadOnly = false
+        clearPending()
         state = .idle
     }
 
@@ -503,13 +550,51 @@ final class ConversationViewModel: ObservableObject {
         attachedRepo = repo
         attachedReadOnly = readOnly
         let place = repo.map { "in \($0)" } ?? "session"
-        let mode = readOnly ? " · read-only" : ""
+        let modeLabel = readOnly ? " · read-only" : " · write · approval"
         messages.append(Message(
             role: .toolCall,
-            text: "attached to \(harness) \(place)\(mode)",
+            text: "attached to \(harness) \(place)\(modeLabel)",
             toolCall: ToolCallDetail(name: "session", preview: "attached", ok: true)
         ))
         state = .idle
+    }
+
+    // MARK: - Phase B: voice approval / questions
+
+    /// Approve or deny a pending write/command. Resolves the paused turn so the
+    /// agent continues (or backs off).
+    func answerApproval(allow: Bool) {
+        guard let p = pendingApproval else { return }
+        pendingApproval = nil
+        let api = self.api
+        Task {
+            try? await api.answerTurn(
+                turnId: p.turnId, requestId: p.requestId, value: allow ? "allow" : "deny"
+            )
+        }
+    }
+
+    /// Answer the agent's structured question with the selected option(s).
+    func answerQuestion(_ selected: [String]) {
+        guard let q = pendingQuestion else { return }
+        pendingQuestion = nil
+        let api = self.api
+        Task {
+            try? await api.answerTurn(turnId: q.turnId, requestId: q.requestId, value: selected)
+        }
+    }
+
+    /// Speak a pending prompt aloud when an on-device voice is active, so the
+    /// approval loop stays voice-forward ("Claude wants to edit …").
+    private func speakPrompt(_ text: String) {
+        guard settings.isLocalVoiceSelected, !text.isEmpty else { return }
+        Task { await LocalSpeaker.shared.speak(text, voice: settings.localVoiceName) }
+    }
+
+    private func clearPending() {
+        pendingApproval = nil
+        pendingQuestion = nil
+        currentTurnId = nil
     }
 
     /// Resume a past conversation by its Hermes session id. The transcript

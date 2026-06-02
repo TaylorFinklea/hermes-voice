@@ -33,6 +33,7 @@
 		6D7510453A27D2B636F7ED1E /* ConversationDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39DAE544DA4A015F4204876E /* ConversationDetailView.swift */; };
 		73ECBA6355C9F91885319907 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A69BCA5084B9B9B056B8C1 /* AppSettings.swift */; };
 		86507E87E889CD0251483AC3 /* AskHermesIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1311370320FAC18BD5A7A0D5 /* AskHermesIntent.swift */; };
+		873F3348A780063514F043BF /* ApprovalCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A078CC45E29218A46741F82 /* ApprovalCards.swift */; };
 		8A22DCC4A0C9B7114A1D91C7 /* SchedulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD0611B5E35BB66D8E090EE /* SchedulesView.swift */; };
 		8B1D926D5BAB433FB8A570D1 /* Atoms.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2667D0C94428D99A956948D /* Atoms.swift */; };
 		8DFF9B2D9AF9974BAC9E1495 /* ActionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C333A49C789676D5541D80BA /* ActionCard.swift */; };
@@ -118,6 +119,7 @@
 		506CD3DFC00ECED6AA2941B4 /* LocalTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTranscriber.swift; sourceTree = "<group>"; };
 		53A4809563E9438638E7D768 /* HermesActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesActivityAttributes.swift; sourceTree = "<group>"; };
 		58B9A5FC3DB9A7AB2383F5ED /* BackendBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendBrowser.swift; sourceTree = "<group>"; };
+		5A078CC45E29218A46741F82 /* ApprovalCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalCards.swift; sourceTree = "<group>"; };
 		71159F3B5BD1FDDED47FF2ED /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		715C6CEBF378666AD02ABB56 /* AudioSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionCoordinator.swift; sourceTree = "<group>"; };
 		7587FF7A3D13C302F4161182 /* SessionBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionBrowserView.swift; sourceTree = "<group>"; };
@@ -192,6 +194,7 @@
 		569B26484FD681A8A453CE3D /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				5A078CC45E29218A46741F82 /* ApprovalCards.swift */,
 				39DAE544DA4A015F4204876E /* ConversationDetailView.swift */,
 				2F5107EB40D7F7FFED269FED /* HistoryView.swift */,
 				BD3A44595552D66831328B5A /* MainView.swift */,
@@ -483,6 +486,7 @@
 				8DFF9B2D9AF9974BAC9E1495 /* ActionCard.swift in Sources */,
 				55CA215F488D2D9567515BB8 /* AppDelegate.swift in Sources */,
 				73ECBA6355C9F91885319907 /* AppSettings.swift in Sources */,
+				873F3348A780063514F043BF /* ApprovalCards.swift in Sources */,
 				86507E87E889CD0251483AC3 /* AskHermesIntent.swift in Sources */,
 				8B1D926D5BAB433FB8A570D1 /* Atoms.swift in Sources */,
 				A52398B744D8E740D17644A7 /* AudioPlayer.swift in Sources */,

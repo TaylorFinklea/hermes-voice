@@ -96,6 +96,19 @@ struct MainView: View {
                 Text(conversationMode.errorMessage ?? "")
             }
         }
+        .overlay(alignment: .bottom) {
+            if let approval = conversation.pendingApproval {
+                ApprovalCard(approval: approval) { conversation.answerApproval(allow: $0) }
+                    .padding(.bottom, 96)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if let question = conversation.pendingQuestion {
+                QuestionCard(question: question) { conversation.answerQuestion($0) }
+                    .padding(.bottom, 96)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(duration: 0.3), value: conversation.pendingApproval)
+        .animation(.spring(duration: 0.3), value: conversation.pendingQuestion)
         .tint(settings.agentAccent)
         .preferredColorScheme(.dark)
     }

@@ -139,10 +139,11 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    /// Title-bar text: the product name on the default agent, the agent's own
-    /// name once you've switched to a coding agent.
+    /// Title-bar text: the active agent + "VOICE" (HERMES VOICE / CLAUDE VOICE
+    /// / …). Hermes is just another harness, so it gets the same treatment. The
+    /// product brand ("Harness") lives on the home-screen icon + onboarding.
     var activeAgentTitle: String {
-        selectedHarness == "hermes" ? "HARNESS VOICE" : activeAgentLabel
+        "\(activeAgentLabel) VOICE"
     }
 
     /// A subtle per-agent accent for the header (title + toolbar tint). The rest

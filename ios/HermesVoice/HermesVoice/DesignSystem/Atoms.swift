@@ -24,7 +24,7 @@ extension ConversationViewModel.State {
 struct StatusChip: View {
     let state: MicState
     var compact: Bool = false
-    var prefix: String = "HERMES"
+    @EnvironmentObject private var settings: AppSettings
 
     var body: some View {
         HStack(spacing: 6) {
@@ -37,7 +37,7 @@ struct StatusChip: View {
                     .animation(state == .recording ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true) : .default, value: pulse)
                     .onAppear { pulse = true }
             }
-            Text("\(prefix) \(descriptor.label)")
+            Text("\(settings.activeAgentLabel) \(descriptor.label)")
                 .font(compact ? HVFont.chipTiny : HVFont.chip)
                 .tracking(0.7)
                 .foregroundStyle(descriptor.color)

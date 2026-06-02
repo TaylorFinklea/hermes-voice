@@ -87,7 +87,7 @@ struct SettingsView: View {
         Section {
             HVField(label: "URL", value: $draftURL, placeholder: "https://host:8765",
                     onSubmit: { commit() })
-            HVField(label: "Token", value: $draftToken, placeholder: "(optional)",
+            HVField(label: "Token", value: $draftToken, placeholder: "(required by your backend)",
                     secure: true, onSubmit: { commit() })
             Button {
                 Task { await ping() }
@@ -220,6 +220,8 @@ struct SettingsView: View {
         do {
             voices = try await api.listVoices()
             voicesError = ""
+        } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code == 401 {
+            voicesError = "Auth token required — add it under Backend above."
         } catch {
             voicesError = "Couldn't load voices (is the backend reachable?)."
         }
@@ -291,6 +293,8 @@ struct SettingsView: View {
                     settings.selectedHarness = fallback.harnessId
                 }
             }
+        } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code == 401 {
+            harnessesError = "Auth token required — add it under Backend above."
         } catch {
             harnessesError = "Couldn't load agents (is the backend reachable?)."
         }

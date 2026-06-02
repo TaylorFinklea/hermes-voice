@@ -126,6 +126,24 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(selectedHarness, forKey: Keys.selectedHarness) }
     }
 
+    /// Short uppercase label for the active agent, for the state chips
+    /// ("CLAUDE IDLE", "HERMES THINKS").
+    var activeAgentLabel: String {
+        switch selectedHarness {
+        case "claude": return "CLAUDE"
+        case "codex": return "CODEX"
+        case "opencode": return "OPENCODE"
+        case "hermes": return "HERMES"
+        default: return selectedHarness.uppercased()
+        }
+    }
+
+    /// Title-bar text: the product name on the default agent, the agent's own
+    /// name once you've switched to a coding agent.
+    var activeAgentTitle: String {
+        selectedHarness == "hermes" ? "HARNESS VOICE" : activeAgentLabel
+    }
+
     init() {
         let d = UserDefaults.standard
         self.backendURL = d.string(forKey: Keys.backendURL) ?? "http://127.0.0.1:8765"

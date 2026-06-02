@@ -424,9 +424,10 @@ private struct HeroJustArrived: View {
 private struct HeroError: View {
     let message: String
     @EnvironmentObject var conversation: ConversationViewModel
+    @EnvironmentObject var settings: AppSettings
 
-    /// A turn timeout means Hermes (the agent on the Mac) was too slow — the
-    /// backend itself is reachable. Don't mislabel that as "offline".
+    /// A turn timeout means the agent on the Mac was too slow — the backend
+    /// itself is reachable. Don't mislabel that as "offline".
     private var isTimeout: Bool {
         message.localizedCaseInsensitiveContains("timed out")
             || message.localizedCaseInsensitiveContains("timeout")
@@ -437,7 +438,7 @@ private struct HeroError: View {
             HStack {
                 HStack(spacing: 6) {
                     Circle().fill(HVColor.dangerSoft).frame(width: 6, height: 6)
-                    Text(isTimeout ? "HERMES SLOW" : "HERMES OFFLINE")
+                    Text(isTimeout ? "\(settings.activeAgentLabel) SLOW" : "BACKEND OFFLINE")
                         .font(HVFont.chip)
                         .tracking(0.7)
                         .foregroundStyle(HVColor.dangerSoft)

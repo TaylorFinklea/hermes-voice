@@ -63,7 +63,7 @@ struct OnboardingView: View {
             Image(systemName: "antenna.radiowaves.left.and.right")
                 .font(.system(size: 30, weight: .semibold))
                 .foregroundStyle(HVColor.amber)
-            Text("HERMES VOICE")
+            Text("HARNESS VOICE")
                 .font(HVFont.title)
                 .tracking(1.0)
                 .foregroundStyle(HVColor.amber)

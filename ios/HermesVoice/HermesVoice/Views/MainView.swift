@@ -58,7 +58,7 @@ struct MainView: View {
                 }
                 .ignoresSafeArea(.keyboard, edges: .bottom)
             }
-            .navigationTitle("HERMES VOICE")
+            .navigationTitle(settings.activeAgentTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
             .toolbarBackground(HVColor.bg, for: .navigationBar)
@@ -119,7 +119,7 @@ struct MainView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            Text("HERMES VOICE")
+            Text(settings.activeAgentTitle)
                 .font(HVFont.title)
                 .tracking(0.8)
                 .foregroundStyle(HVColor.amber)

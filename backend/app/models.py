@@ -1,7 +1,19 @@
 """Request/response shapes shared by the API."""
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field  # noqa: F401  (Field used below)
+
+
+class TurnAnswer(BaseModel):
+    """Client's answer to a mid-turn approval/question (Phase B).
+
+    `value` is "allow"/"deny" for an approval, or the selected option(s) for a
+    question — the agent's permission callback / AskUser tool interprets it.
+    """
+    request_id: str = Field(..., min_length=1, max_length=64)
+    value: Any = None
 
 
 class TextRequest(BaseModel):

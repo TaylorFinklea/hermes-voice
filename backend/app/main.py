@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from . import mdns, schedules
 from .audio_store import AudioStore
 from .config import Settings, get_settings
+from .approvals import ApprovalBroker
 from .harness import HARNESS_DISPLAY_NAMES, HarnessClient
 from .hermes import HermesClient, HermesError, MockHermesClient, StreamReply, StreamTool
 from .models import (
@@ -42,6 +43,7 @@ from .models import (
     SessionListItem,
     TextRequest,
     ToolCallSummary,
+    TurnAnswer,
     TurnResponse,
     VoiceItem,
 )
@@ -144,6 +146,8 @@ def create_app(
         if settings.default_harness in app.state.harnesses
         else "hermes"
     )
+    # Phase B: per-turn approval/question channel (voice-mediated tool approval).
+    app.state.approvals = ApprovalBroker()
     app.state.stt = stt
     app.state.tts = tts
     app.state.store = store
@@ -461,6 +465,19 @@ def _register_routes(app: FastAPI) -> None:
             )
             for s in sessions
         ]
+
+    @app.post(
+        "/api/turns/{turn_id}/answer",
+        dependencies=[Depends(_require_token)],
+    )
+    async def answer_turn(turn_id: str, body: TurnAnswer) -> dict:
+        """Answer a mid-turn approval/question (Phase B). The turn's agent
+        permission callback is awaiting this; 404 if there's no pending request
+        with that id (e.g. it already timed out or the turn ended)."""
+        ok: bool = app.state.approvals.answer(turn_id, body.request_id, body.value)
+        if not ok:
+            raise HTTPException(status_code=404, detail="no such pending request")
+        return {"ok": True}
 
     @app.get(
         "/api/schedules",

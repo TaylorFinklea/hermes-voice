@@ -53,7 +53,10 @@ class Settings:
     public_host: str = ""
 
     hermes_bin: str = "hermes"
-    hermes_timeout: int = 180
+    # Per-turn ceiling. Resuming a long Claude session replays its whole
+    # transcript before the first reply, so this matches the iOS client's
+    # 300s request timeout rather than cutting off big-session resumes early.
+    hermes_timeout: int = 300
     hermes_extra_args: tuple[str, ...] = field(default_factory=tuple)
 
     # Multi-harness: which agent backs a turn when the request doesn't name one,

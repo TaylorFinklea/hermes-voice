@@ -282,16 +282,28 @@ def session_meta_from_file(path: Path) -> HarnessSession | None:
 
 
 def list_claude_sessions(
-    limit: int = 30, projects_dir: Path | None = None
+    limit: int = 30,
+    projects_dir: Path | None = None,
+    exclude: tuple[str, ...] = ("ClaudeProbe",),
 ) -> list[HarnessSession]:
-    """Most-recent Claude sessions (by transcript mtime), newest first."""
+    """Most-recent Claude sessions (by transcript mtime), newest first.
+
+    Sessions whose project directory (the slugified cwd) contains any `exclude`
+    substring are skipped — e.g. throwaway "ClaudeProbe" usage-probe sessions.
+    The filter runs BEFORE the limit so the probes can't crowd real sessions out
+    of the top N. `glob("*/*.jsonl")` is one level deep, so nested subagent
+    transcripts are excluded too.
+    """
     base = projects_dir or _claude_projects_dir()
     if not base.is_dir():
         return []
     try:
-        files = sorted(
-            base.glob("*/*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True
-        )
+        files = [
+            p
+            for p in base.glob("*/*.jsonl")
+            if not any(ex and ex in p.parent.name for ex in exclude)
+        ]
+        files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     except OSError:
         return []
     out: list[HarnessSession] = []
@@ -393,8 +405,10 @@ class ClaudeAdapter:
         return args
 
     async def list_sessions(self, limit: int = 30) -> list[HarnessSession]:
-        """Recent Claude Code sessions for the iOS attach picker."""
-        return await asyncio.to_thread(list_claude_sessions, limit)
+        """Recent Claude Code sessions for the iOS attach picker (probe sessions
+        filtered per settings.claude_session_exclude)."""
+        exclude = tuple(self._settings.claude_session_exclude)
+        return await asyncio.to_thread(list_claude_sessions, limit, None, exclude)
 
     async def ask(self, prompt: str, session_id: str | None = None) -> HermesReply:
         if not prompt.strip():

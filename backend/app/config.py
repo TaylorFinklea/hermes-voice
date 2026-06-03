@@ -63,6 +63,9 @@ class Settings:
     default_harness: str = "hermes"
     harness_workspace_dir: str = ""
     harness_sandbox: str = "workspace-write"
+    # Slugs (working-dir fragments) to hide from the Claude session picker — e.g.
+    # throwaway "ClaudeProbe" sessions a usage-probe tool (codexbar) creates.
+    claude_session_exclude: tuple[str, ...] = ("ClaudeProbe",)
 
     stt_provider_override: str = ""
     openai_key: str = ""
@@ -108,6 +111,11 @@ def get_settings() -> Settings:
             default=str(Path.home() / ".harness-voice" / "workspace"),
         ),
         harness_sandbox=_env("HARNESS_SANDBOX", default="workspace-write"),
+        claude_session_exclude=tuple(
+            s.strip()
+            for s in _env("CLAUDE_SESSION_EXCLUDE", default="ClaudeProbe").split(",")
+            if s.strip()
+        ),
         stt_provider_override=_env("STT_PROVIDER"),
         openai_key=_env("OPENAI_API_KEY", "VOICE_TOOLS_OPENAI_KEY"),
         groq_key=_env("GROQ_API_KEY"),

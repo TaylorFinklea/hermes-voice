@@ -78,6 +78,21 @@ def test_list_claude_sessions_missing_dir_is_empty(tmp_path):
     assert list_claude_sessions(projects_dir=tmp_path / "nonexistent") == []
 
 
+def test_list_claude_sessions_excludes_probe_dirs(tmp_path):
+    real = "aaaa1111-0000-0000-0000-000000000000"
+    probe = "bbbb2222-0000-0000-0000-000000000000"
+    _write_session(tmp_path, "-Users-me-git-foo", real,
+                   [{"type": "queue-operation", "content": "real work", "sessionId": real}])
+    _write_session(tmp_path, "-Users-me-Library-CodexBar-ClaudeProbe", probe,
+                   [{"type": "queue-operation", "content": "/usage", "sessionId": probe}])
+    ids = {s.session_id for s in list_claude_sessions(projects_dir=tmp_path)}
+    assert real in ids
+    assert probe not in ids  # default exclude=("ClaudeProbe",)
+    # No exclusion → both surface.
+    ids_all = {s.session_id for s in list_claude_sessions(projects_dir=tmp_path, exclude=())}
+    assert real in ids_all and probe in ids_all
+
+
 def test_harness_sessions_endpoint_hermes_lists_nothing():
     # FakeHermes has no list_sessions → endpoint returns [] (the optional-
     # capability path), still a clean 200.

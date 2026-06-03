@@ -270,13 +270,14 @@ private struct BounceLabel: View {
                             .offset(y: -4 * pulse(localPhase))
                     }
                 }
-                Text("\(text) \(formatElapsed(elapsed))")
+                Text(text)
+                    .font(HVFont.bodyDim)
+                    .foregroundStyle(color)
+                Spacer(minLength: 0)
+                Text(formatElapsed(elapsed))
                     .font(HVFont.bodyDim)
                     .monospacedDigit()
                     .foregroundStyle(color)
-                Spacer(minLength: 0)
-                ProgressStrip(phase: phase, color: color)
-                    .frame(width: 54, height: 3)
             }
         }
         .onAppear { startedAt = Date() }
@@ -289,23 +290,6 @@ private struct BounceLabel: View {
     private func formatElapsed(_ elapsed: TimeInterval) -> String {
         let seconds = max(0, Int(elapsed))
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
-    }
-}
-
-private struct ProgressStrip: View {
-    let phase: Double
-    let color: Color
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule().fill(color.opacity(0.20))
-                Capsule()
-                    .fill(color)
-                    .frame(width: max(12, proxy.size.width * 0.34))
-                    .offset(x: (proxy.size.width * 0.66) * phase)
-            }
-        }
     }
 }
 

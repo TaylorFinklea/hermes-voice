@@ -106,6 +106,53 @@ From the adversarially-verified review (40 kept / 34 confirmed; harness-deck rep
 - [x] **"Turn hangs"** — DIAGNOSED (2026-05-29): not a hang. STT (≤90s) and `hermes.ask` (≤180s) are both bounded, and the client times out at ~60s → `.error`. It was a *slow* Hermes turn (a trivial "list home dir" took 22s) with no live feedback + (now-fixed) broken barge-in, so it *felt* frozen. The real fix is live progress (below). (Optional future polish: a tighter client turn timeout + clearer message.)
 - [x] **Live tool-calls during thinking** — SHIPPED (Phase 2: `d6377cc` backend, `67a04a9` iOS, 2026-05-29). Validated that Hermes flushes tool previews to stdout incrementally through a pipe; backend runs non-`-Q` + streams `tool` events over SSE (`/api/text/stream`, `/api/audio/stream`), authoritative reply + tools from the session export; iOS consumes the SSE and renders chips live in the thinking pane, with single-shot fallback. Spec + status: `.docs/ai/phases/live-progress-convo-control-spec.md`. **On-device test pending.**
 
+### Large-session resume warning + remedy (2026-06-03)
+
+Resuming a long Claude session replays its whole transcript before the first
+reply streams (e.g. a ~5k-message session blew past the old 180s timeout;
+mitigated to 300s in `a061863`). No native way to partial-load history —
+`--resume`/`--fork-session` always load the full transcript. So warn the user
+*before* they attach, and **always pair the warning with the fix** (run
+`/compact`), never a dead-end.
+
+- [ ] **Backend — surface a "heavy session" signal.** In the Claude session
+  scanner (`backend/app/adapters/claude.py` — `session_meta_from_file` /
+  `list_claude_sessions`), expose cheap size signals already at hand:
+  `st_size` (no parsing) plus the existing `message_count`. Add a field to the
+  session shape (`HarnessSession` in `backend/app/harness.py`, `SessionListItem`
+  in `backend/app/models.py`) — either raw `size_bytes` or a derived
+  `heavy: bool` (threshold ~2 MB or ~500 msgs; pick one, document it). Optional
+  fields, back-compat (Hermes leaves them null). Mirror how `cwd`/`title` were
+  added.
+- [ ] **iOS — chip in the session browser, before attach.** In
+  `Views/SessionBrowserView.swift` (+ decode the new field in
+  `Services/HermesVoiceAPI.swift`'s `HarnessSession`), show a chip on heavy rows:
+  e.g. `⚠ Large · ~5k msgs · slow to resume`. The choice happens *before* the
+  slow turn, not during it.
+- [ ] **iOS — attach-time notice that carries the remedy.** When attaching to a
+  heavy session, show a one-time banner: *"Large history — first reply may take
+  a few minutes. Run `/compact` in this session's terminal to speed up future
+  resumes."* The remedy is mandatory copy, not optional. `/compact` keeps the
+  same session ID (still resumable, still the thing they drive in Moshi), unlike
+  a fork.
+- **Acceptance**: a >2 MB session shows the chip in the browser and the
+  remedy-bearing notice on attach; a small session shows neither; the field is
+  optional so Hermes sessions and older clients are unaffected.
+- **Verify**: `uv run --project backend pytest` green (add a scanner test:
+  big-fixture → `heavy`/`size_bytes` set; small → not); `xcodebuild … build
+  CODE_SIGNING_ALLOWED=NO` green.
+- **Tier hint**: Sonnet — multi-file but localized (one backend field + two iOS
+  surfaces).
+- **Deferred follow-up (separate item, do NOT bundle):** execute the remedy
+  *from the app* — a "Compact this session" button. Lead with triggering
+  `/compact` in place (preserves continuity); fork-from-summary is the fallback
+  but **forks the session ID** (diverges from the terminal) and is lossy.
+  Gotcha to remember: a real model summary of a huge session is itself slow
+  (something must load the history to summarize it), so a free/instant version
+  seeds the new session with the raw last-K-messages tail + `ai-title`, not a
+  model summary. **Needs a spike**: whether `/compact` can be driven headlessly
+  (slash commands in `-p` mode are unverified).
+
 ## Constraints
 
 - iOS 17+ / watchOS 10+

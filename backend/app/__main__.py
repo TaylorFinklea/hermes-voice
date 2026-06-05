@@ -4,10 +4,13 @@ from __future__ import annotations
 import uvicorn
 
 from .config import get_settings
+from .main import assert_safe_bind
 
 
 def main() -> None:
     settings = get_settings()
+    # Refuse to bind beyond loopback without an auth token (fail closed).
+    assert_safe_bind(settings)
 
     # Enable HTTPS when both cert and key are configured. Tailscale-issued
     # certs (`tailscale cert <name>.ts.net`) are real Let's Encrypt certs that

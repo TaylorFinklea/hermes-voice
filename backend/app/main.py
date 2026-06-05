@@ -69,6 +69,25 @@ _bg_tasks: set[asyncio.Task] = set()
 _STREAM_IDLE_TIMEOUT = 60.0
 
 
+def _is_loopback_host(host: str) -> bool:
+    """True when `host` only accepts local connections — so an empty auth token
+    there is safe. Anything else (0.0.0.0, ::, a LAN/Tailscale IP) is exposed."""
+    h = host.strip().lower()
+    return h in {"localhost", "127.0.0.1", "::1"} or h.startswith("127.")
+
+
+def assert_safe_bind(settings: Settings) -> None:
+    """Fail closed before binding a socket: a non-loopback host with no auth
+    token would expose every endpoint to anyone on the LAN/tailnet. Called from
+    the server entrypoint (__main__), not app construction — TestClient builds
+    the app without binding, so it must stay exempt."""
+    if not settings.auth_token and not _is_loopback_host(settings.host):
+        raise RuntimeError(
+            f"refusing to start: host={settings.host!r} is not loopback and "
+            "HERMES_VOICE_TOKEN is empty — set a token or bind to 127.0.0.1"
+        )
+
+
 def create_app(
     *,
     hermes: HermesClient | None = None,
@@ -179,33 +198,46 @@ def _should_auto_mock(s: Settings) -> bool:
     return not (has_hermes or has_any_key)
 
 
+def _token_ok(request: Request, token: str | None) -> bool:
+    """True when the request is authenticated — or no token is configured (dev
+    loopback). Shared by `_require_token` (hard gate) and `/health` (soft: it
+    downgrades to a minimal body rather than 401)."""
+    expected = request.app.state.settings.auth_token
+    if not expected:
+        return True
+    return bool(token) and secrets.compare_digest(token, expected)
+
+
 def _require_token(
     request: Request,
     x_hermes_voice_token: Annotated[str | None, Header()] = None,
 ) -> None:
-    expected = request.app.state.settings.auth_token
-    if not expected:
-        return
-    if not x_hermes_voice_token or not secrets.compare_digest(
-        x_hermes_voice_token, expected
-    ):
+    if not _token_ok(request, x_hermes_voice_token):
         raise HTTPException(status_code=401, detail="invalid or missing token")
 
 
 def _register_routes(app: FastAPI) -> None:
     @app.get("/health", response_model=HealthResponse)
-    async def health(request: Request) -> HealthResponse:
+    async def health(
+        request: Request,
+        x_hermes_voice_token: Annotated[str | None, Header()] = None,
+    ) -> HealthResponse:
+        # Public, token-free: reachability for the onboarding connection test.
+        base = HealthResponse(
+            status="ok", mock=app.state.auto_mock, scheme=request.url.scheme
+        )
+        # Config details (binary paths, workspace dir, providers) only for an
+        # authenticated caller — otherwise anyone on the tailnet/LAN could read
+        # the runtime layout.
+        if not _token_ok(request, x_hermes_voice_token):
+            return base
         hermes: HermesClient = app.state.hermes
         stt: STTProvider | None = app.state.stt
         tts: TTSProvider | None = app.state.tts
-        return HealthResponse(
-            status="ok",
-            mock=app.state.auto_mock,
-            hermes=hermes.describe(),
-            stt=(stt.describe() if stt else {"name": "none", "configured": False}),
-            tts=(tts.describe() if tts else {"name": "none", "configured": False}),
-            scheme=request.url.scheme,
-        )
+        base.hermes = hermes.describe()
+        base.stt = stt.describe() if stt else {"name": "none", "configured": False}
+        base.tts = tts.describe() if tts else {"name": "none", "configured": False}
+        return base
 
     @app.post(
         "/api/text",

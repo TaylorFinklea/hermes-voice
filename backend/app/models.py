@@ -111,10 +111,14 @@ class HarnessItem(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     mock: bool
-    hermes: dict
-    stt: dict
-    tts: dict
     scheme: str = "http"
+    # Runtime/provider details. Disclosed only to an authenticated caller (they
+    # leak binary paths, the workspace dir, configured providers); an
+    # unauthenticated /health gets just status/mock/scheme so the onboarding
+    # reachability check still works without a token.
+    hermes: dict = Field(default_factory=dict)
+    stt: dict = Field(default_factory=dict)
+    tts: dict = Field(default_factory=dict)
 
 
 # ───── Schedules (recurring messages) ─────

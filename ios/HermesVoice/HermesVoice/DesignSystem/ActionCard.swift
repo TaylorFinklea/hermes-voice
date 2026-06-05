@@ -78,9 +78,35 @@ enum ActionCard: Equatable {
                 if t.count <= 60 { leadingTitle = t }
             }
         }
+        // Require the bullets to clearly dominate (≥70% of non-empty lines), so
+        // prose that happens to contain a few dashed/numbered fragments doesn't
+        // get reshaped into a card.
         guard items.count >= 3,
-              Double(items.count) >= Double(lines.count) * 0.6 else { return nil }
+              Double(items.count) >= Double(lines.count) * 0.7 else { return nil }
         return .bullets(title: leadingTitle, items: items)
+    }
+
+    /// The portion of `text` this card does NOT already render — the surrounding
+    /// prose (an intro/outro line) — so callers can show it without duplicating
+    /// the lines the card displays. Empty when the card consumed everything.
+    func residual(in text: String) -> String {
+        let kept = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !consumes($0) }
+            .joined(separator: "\n")
+        return kept.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// True when `line` is one of the lines this card visually represents.
+    private func consumes(_ line: Substring) -> Bool {
+        switch self {
+        case .calendar:
+            return line.firstMatch(of: ActionCard.timeLine) != nil
+        case .bullets(let title, _):
+            if line.firstMatch(of: ActionCard.bulletLine) != nil { return true }
+            return !title.isEmpty
+                && line.trimmingCharacters(in: .whitespaces) == title
+        }
     }
 }
 

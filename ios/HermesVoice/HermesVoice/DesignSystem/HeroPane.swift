@@ -325,10 +325,13 @@ private struct HeroSpeaks: View {
             if let assistantText = conversation.lastAssistantText {
                 if let card = ActionCard.detect(in: conversation.messages) {
                     ActionCardView(card: card)
-                    Text("←  \(assistantText)")
-                        .font(HVFont.heroReply)
-                        .foregroundStyle(HVColor.cream)
-                        .fixedSize(horizontal: false, vertical: true)
+                    let residual = card.residual(in: assistantText)
+                    if !residual.isEmpty {
+                        Text("←  \(residual)")
+                            .font(HVFont.heroReply)
+                            .foregroundStyle(HVColor.cream)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 } else {
                     Text("←  \(assistantText)")
                         .font(HVFont.heroSpeak.weight(.medium))
@@ -375,13 +378,15 @@ private struct HeroJustArrived: View {
                         }
                     }
                     if let assistantText = conversation.lastAssistantText {
-                        if let card = ActionCard.detect(in: conversation.messages) {
-                            ActionCardView(card: card)
+                        let card = ActionCard.detect(in: conversation.messages)
+                        if let card { ActionCardView(card: card) }
+                        let shown = card?.residual(in: assistantText) ?? assistantText
+                        if !shown.isEmpty {
+                            Text("←  \(shown)")
+                                .font(HVFont.heroReply)
+                                .foregroundStyle(HVColor.cream)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        Text("←  \(assistantText)")
-                            .font(HVFont.heroReply)
-                            .foregroundStyle(HVColor.cream)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding(.leading, 12)

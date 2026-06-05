@@ -16,7 +16,7 @@ struct HermesVoiceApp: App {
         // Activate the WatchConnectivity bridge at app startup so audio
         // transfers from a paired Watch are handled even before any view
         // holds a reference. Singleton — safe to call repeatedly.
-        PhoneWatchBridge.shared.start()
+        PhoneWatchBridge.shared.start(settings: settings)
         // Wire push notifications. Permission prompt is deferred until the
         // user toggles it in Settings; this just hands the settings ref
         // to the manager and (if previously authorized) primes registration.

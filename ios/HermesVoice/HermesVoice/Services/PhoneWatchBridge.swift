@@ -11,12 +11,13 @@ import WatchConnectivity
 final class PhoneWatchBridge: NSObject, ObservableObject {
     static let shared = PhoneWatchBridge()
 
-    private let settings: AppSettings
+    // Injected from HermesVoiceApp so Watch turns read the SAME live settings
+    // the app uses — not a stale launch-time snapshot. Weak: the app's
+    // @StateObject owns it (mirrors NotificationManager).
+    private weak var settings: AppSettings?
     private let wcSession: WCSession?
 
     override init() {
-        // Read settings fresh — Watch messages can fire before any view is up.
-        self.settings = AppSettings()
         if WCSession.isSupported() {
             self.wcSession = WCSession.default
         } else {
@@ -27,18 +28,20 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
         wcSession?.activate()
     }
 
-    /// Call once from HermesVoiceApp.init() so the session is activated and
-    /// ready to receive Watch transfers from app launch.
-    func start() {
-        // No-op — activation happens in init. This method exists so the
-        // singleton is reified at app startup; otherwise WCSession would
-        // only activate when the first view holds a reference.
+    /// Call once from HermesVoiceApp.init() with the app's shared settings, so
+    /// the session is activated and Watch turns see live setting changes.
+    func start(settings: AppSettings) {
+        self.settings = settings
         _ = wcSession?.activationState
     }
 
     // MARK: - Inbound from Watch
 
     fileprivate func handleAudioTransfer(_ file: WCSessionFile) async {
+        guard let settings else {
+            await replyError("App not ready — open Harness Voice on your phone.")
+            return
+        }
         let metadata = file.metadata ?? [:]
         let sessionId = (metadata["session_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
 

@@ -38,6 +38,10 @@ class HarnessSession:
     preview: str
     cwd: str | None = None
     title: str | None = None
+    # Transcript size on disk. Resuming a coding session replays its whole
+    # transcript, so a large file = a slow first reply; the iOS attach picker
+    # uses this to warn before attaching. 0 when unknown / not applicable.
+    size_bytes: int = 0
 
 
 @runtime_checkable

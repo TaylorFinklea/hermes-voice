@@ -657,6 +657,7 @@ struct HermesVoiceAPI {
         let preview: String
         let cwd: String?
         let title: String?
+        let sizeBytes: Int
 
         enum CodingKeys: String, CodingKey {
             case sessionId = "session_id"
@@ -665,6 +666,33 @@ struct HermesVoiceAPI {
             case messageCount = "message_count"
             case toolCallCount = "tool_call_count"
             case preview, cwd, title
+            case sizeBytes = "size_bytes"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            sessionId = try c.decode(String.self, forKey: .sessionId)
+            source = try c.decode(String.self, forKey: .source)
+            startedAt = try c.decode(Double.self, forKey: .startedAt)
+            messageCount = try c.decode(Int.self, forKey: .messageCount)
+            toolCallCount = try c.decode(Int.self, forKey: .toolCallCount)
+            preview = try c.decode(String.self, forKey: .preview)
+            cwd = try c.decodeIfPresent(String.self, forKey: .cwd)
+            title = try c.decodeIfPresent(String.self, forKey: .title)
+            // Older backends omit size_bytes — treat as unknown (0, never heavy).
+            sizeBytes = try c.decodeIfPresent(Int.self, forKey: .sizeBytes) ?? 0
+        }
+
+        /// Resuming a session replays its whole transcript, so a large file
+        /// means a slow first reply. Mirror of the backend's heaviness intent;
+        /// thresholds live here so the warning copy and the gate stay together.
+        var isHeavy: Bool { sizeBytes > 2_000_000 || messageCount > 500 }
+
+        /// Compact "~5k msgs" / "120 msgs" label for the heavy-session chip.
+        var messageCountLabel: String {
+            messageCount >= 1000
+                ? "~\(Int((Double(messageCount) / 1000).rounded()))k msgs"
+                : "\(messageCount) msgs"
         }
 
         /// Last path component of `cwd` (e.g. "/Users/me/git/foo" → "foo").

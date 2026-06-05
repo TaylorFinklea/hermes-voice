@@ -268,7 +268,11 @@ def session_meta_from_file(path: Path) -> HarnessSession | None:
                     preview = _first_user_text(obj)
     except OSError:
         return None
-    started_at = last_ts if last_ts > 0 else path.stat().st_mtime
+    try:
+        st = path.stat()
+    except OSError:
+        st = None
+    started_at = last_ts if last_ts > 0 else (st.st_mtime if st else 0.0)
     return HarnessSession(
         session_id=session_id,
         source="claude",
@@ -278,6 +282,7 @@ def session_meta_from_file(path: Path) -> HarnessSession | None:
         preview=_truncate(preview, 200),
         cwd=cwd,
         title=title,
+        size_bytes=st.st_size if st else 0,
     )
 
 

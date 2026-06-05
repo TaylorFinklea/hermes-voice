@@ -465,6 +465,7 @@ def _register_routes(app: FastAPI) -> None:
                 preview=s.preview,
                 cwd=s.cwd,
                 title=s.title,
+                size_bytes=s.size_bytes,
             )
             for s in sessions
         ]

@@ -58,6 +58,9 @@ class SessionListItem(BaseModel):
     # the iOS attach picker. Null for Hermes sessions.
     cwd: str | None = None
     title: str | None = None
+    # Transcript size on disk (bytes). Large = slow to resume; the attach picker
+    # warns on it. 0 for Hermes sessions / when unknown.
+    size_bytes: int = 0
 
 
 class HistoryToolCall(BaseModel):

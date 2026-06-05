@@ -115,26 +115,19 @@ mitigated to 300s in `a061863`). No native way to partial-load history —
 *before* they attach, and **always pair the warning with the fix** (run
 `/compact`), never a dead-end.
 
-- [ ] **Backend — surface a "heavy session" signal.** In the Claude session
-  scanner (`backend/app/adapters/claude.py` — `session_meta_from_file` /
-  `list_claude_sessions`), expose cheap size signals already at hand:
-  `st_size` (no parsing) plus the existing `message_count`. Add a field to the
-  session shape (`HarnessSession` in `backend/app/harness.py`, `SessionListItem`
-  in `backend/app/models.py`) — either raw `size_bytes` or a derived
-  `heavy: bool` (threshold ~2 MB or ~500 msgs; pick one, document it). Optional
-  fields, back-compat (Hermes leaves them null). Mirror how `cwd`/`title` were
-  added.
-- [ ] **iOS — chip in the session browser, before attach.** In
-  `Views/SessionBrowserView.swift` (+ decode the new field in
-  `Services/HermesVoiceAPI.swift`'s `HarnessSession`), show a chip on heavy rows:
-  e.g. `⚠ Large · ~5k msgs · slow to resume`. The choice happens *before* the
-  slow turn, not during it.
-- [ ] **iOS — attach-time notice that carries the remedy.** When attaching to a
-  heavy session, show a one-time banner: *"Large history — first reply may take
-  a few minutes. Run `/compact` in this session's terminal to speed up future
-  resumes."* The remedy is mandatory copy, not optional. `/compact` keeps the
-  same session ID (still resumable, still the thing they drive in Moshi), unlike
-  a fork.
+- [x] **Backend — surface a "heavy session" signal.** SHIPPED (2026-06-04).
+  `size_bytes` (raw `st_size`, single stat in `session_meta_from_file`) added to
+  `HarnessSession` (`harness.py`) + `SessionListItem` (`models.py`), threaded
+  through the `/api/harnesses/{id}/sessions` endpoint. Optional/default-0, so
+  Hermes + older clients are unaffected. iOS owns the threshold.
+- [x] **iOS — chip in the session browser, before attach.** SHIPPED. Heavy rows
+  (`HarnessSession.isHeavy`: >2 MB or >500 msgs) show
+  `⚠ Large · ~5k msgs · slow to resume` in `SessionBrowserView`. `size_bytes`
+  decoded with a default so older backends just never flag heavy.
+- [x] **iOS — attach-time notice that carries the remedy.** SHIPPED. Tapping a
+  heavy session shows a confirm alert ("Large history") whose body spells out
+  the `/compact` remedy before "Attach anyway"; light sessions attach straight
+  through. Remedy is mandatory copy, paired with the warning.
 - **Acceptance**: a >2 MB session shows the chip in the browser and the
   remedy-bearing notice on attach; a small session shows neither; the field is
   optional so Hermes sessions and older clients are unaffected.

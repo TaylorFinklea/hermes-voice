@@ -19,6 +19,9 @@ struct SessionBrowserView: View {
     @State private var loading = false
     @State private var error = ""
     @State private var writeMode = false
+    /// Set when the user taps a large session — drives a confirm-with-remedy
+    /// alert instead of attaching straight into a several-minute first reply.
+    @State private var pendingHeavy: HermesVoiceAPI.HarnessSession?
 
     var body: some View {
         List {
@@ -57,7 +60,7 @@ struct SessionBrowserView: View {
                         .listRowBackground(HVColor.creamSurface)
                 } else {
                     ForEach(sessions) { s in
-                        Button { attach(s) } label: { row(s) }
+                        Button { handleTap(s) } label: { row(s) }
                             .listRowBackground(HVColor.creamSurface)
                     }
                 }
@@ -74,6 +77,25 @@ struct SessionBrowserView: View {
         .navigationTitle("\(harnessName) Sessions")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+        .alert("Large history", isPresented: heavyAlert, presenting: pendingHeavy) { s in
+            Button("Attach anyway") { attach(s) }
+            Button("Cancel", role: .cancel) {}
+        } message: { s in
+            Text("This session has \(s.messageCount) messages, so the first reply may take a few minutes while it loads.\n\nTo speed up future resumes, run /compact in this session's terminal — it shrinks the history while keeping the same session.")
+        }
+    }
+
+    /// Bridges the optional `pendingHeavy` to the alert's Bool presentation.
+    private var heavyAlert: Binding<Bool> {
+        Binding(get: { pendingHeavy != nil }, set: { if !$0 { pendingHeavy = nil } })
+    }
+
+    private func handleTap(_ s: HermesVoiceAPI.HarnessSession) {
+        if s.isHeavy {
+            pendingHeavy = s          // confirm + show the /compact remedy first
+        } else {
+            attach(s)
+        }
     }
 
     private func row(_ s: HermesVoiceAPI.HarnessSession) -> some View {
@@ -95,8 +117,25 @@ struct SessionBrowserView: View {
             Text("\(s.messageCount) messages · \(s.toolCallCount) tools")
                 .font(HVFont.captionTiny)
                 .foregroundStyle(HVColor.creamDim)
+            if s.isHeavy { heavyChip(s) }
         }
         .padding(.vertical, 2)
+    }
+
+    /// Flags a session whose transcript is large enough that resuming it (a full
+    /// replay) makes the first reply slow. Shown before attach so the choice is
+    /// informed; the remedy is spelled out in the attach confirmation.
+    private func heavyChip(_ s: HermesVoiceAPI.HarnessSession) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "exclamationmark.triangle.fill")
+            Text("Large · \(s.messageCountLabel) · slow to resume")
+        }
+        .font(HVFont.captionTiny)
+        .foregroundStyle(HVColor.amber)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(HVColor.amber.opacity(0.12), in: Capsule())
+        .padding(.top, 1)
     }
 
     private func attach(_ s: HermesVoiceAPI.HarnessSession) {

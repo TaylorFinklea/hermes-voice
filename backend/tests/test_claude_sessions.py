@@ -50,6 +50,18 @@ def test_session_meta_extracts_cwd_preview_title(tmp_path):
     assert meta.message_count == 2  # 1 user + 1 assistant
 
 
+def test_session_meta_reports_transcript_size(tmp_path):
+    sid = "33333333-3333-3333-3333-333333333333"
+    p = _write_session(
+        tmp_path, "-Users-me-git-foo", sid,
+        [{"type": "user", "cwd": "/Users/me/git/foo", "sessionId": sid,
+          "message": {"content": "hi"}}],
+    )
+    meta = session_meta_from_file(p)
+    assert meta is not None
+    assert meta.size_bytes == p.stat().st_size > 0
+
+
 def test_list_claude_sessions_orders_by_mtime_and_limits(tmp_path):
     for i in range(3):
         sid = f"0000000{i}-0000-0000-0000-000000000000"

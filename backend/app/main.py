@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 import secrets
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Annotated
 
 from fastapi import (
@@ -63,6 +63,11 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 # Each is discarded from the set on completion.
 _bg_tasks: set[asyncio.Task] = set()
 
+# How long the streaming-TTS producer waits to hand off a chunk before deciding
+# the consumer is gone (never connected, or disconnected). Past this it stops
+# and closes the upstream connection rather than blocking on a full queue.
+_STREAM_IDLE_TIMEOUT = 60.0
+
 
 def create_app(
     *,
@@ -119,6 +124,12 @@ def create_app(
                 await mdns.stop_mdns(mdns_state)
             except Exception as e:
                 logger.warning("mdns shutdown error: %s", e)
+            # Cancel any live TTS producers + delete the temp audio dir so a
+            # restart doesn't leak a `harness-voice-*` dir each time.
+            try:
+                store.close()
+            except Exception as e:
+                logger.warning("audio store shutdown error: %s", e)
 
     app = FastAPI(
         title="Hermes Voice Backend",
@@ -608,19 +619,39 @@ def _start_stream(
     audio_id, queue = store.start_stream(tts.stream_extension, tts.stream_mime)
 
     async def producer() -> None:
+        gen = tts.stream(text, voice_id=voice_id)
         try:
-            async for chunk in tts.stream(text, voice_id=voice_id):
-                if chunk:
-                    await queue.put(chunk)
+            # wait_for() so a consumer that never connects (or stalls) can't
+            # block the producer forever once the 128-slot queue fills — that
+            # would pin the upstream TTS connection open indefinitely.
+            async for chunk in gen:
+                if not chunk:
+                    continue
+                try:
+                    await asyncio.wait_for(queue.put(chunk), timeout=_STREAM_IDLE_TIMEOUT)
+                except asyncio.TimeoutError:
+                    logger.warning("tts stream abandoned by consumer; closing")
+                    return
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.warning("tts stream error mid-flight: %s", e)
         finally:
-            # Sentinel: tells consumers no more chunks are coming.
-            await queue.put(None)
+            # Deterministically close the upstream generator (e.g. ElevenLabs
+            # connection) on abandon/cancel instead of leaving it to GC.
+            aclose = getattr(gen, "aclose", None)
+            if aclose is not None:
+                with suppress(Exception):
+                    await aclose()
+            # Sentinel: tells any consumer no more chunks are coming. Best-effort
+            # (the queue may be full precisely because no one is draining it).
+            with suppress(asyncio.QueueFull):
+                queue.put_nowait(None)
 
     t = asyncio.create_task(producer())
     _bg_tasks.add(t)
     t.add_done_callback(_bg_tasks.discard)
+    store.set_producer(audio_id, t)
     return f"/api/audio/{audio_id}"
 
 

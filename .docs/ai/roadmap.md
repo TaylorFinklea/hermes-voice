@@ -81,16 +81,16 @@ From the adversarially-verified review (40 kept / 34 confirmed; harness-deck rep
 - [x] Foreground scheduled-arrival auto-play gated to idle (weak VM ref) + holds one coordinator session across chime→reply + single owned player (no throwaway fight, no LA double-drive).
 - [x] Barge-in during `.sending/.thinking` — FIXED (`8a687fd`, 2026-05-29). Confirmed on device (stuck on Sending/Thinking, only X worked) + by a verified 12-agent state-machine trace: `userPressedMic`'s `.thinking/.sending` arm called `startRecording()` whose guard blocks from non-idle states. Fix: set `state = .idle` after cancel, before `startRecording()`. (The trace also REFUTED the feared "clobber race" — all components are @MainActor/serialized, so a cancelled turn can't run `handle()` concurrently; `.speaking` barge-in was already correct + deterministic.)
 
-**Other confirmed:**
-- [ ] Streaming-TTS producer blocks forever / leaks the ElevenLabs connection if no consumer drains the queue (`main.py:404-425`; + `audio_store` eviction should cancel the producer).
-- [ ] HeroPane renders the reply twice when a `.bullets` ActionCard is detected (strip card-consumed lines).
-- [ ] `AudioStore` — no TTL/disk cleanup; temp dir leaks each restart (lifespan `rmtree` + TTL sweep).
-- [ ] `PhoneWatchBridge` keeps a divergent `AppSettings()` copy → stale watch settings (single shared settings).
-- [ ] Bullets ActionCard over-triggers on dashed/numbered prose (tighten heuristic).
+**Other confirmed — DONE (2026-06-04, bug+security sweep):**
+- [x] Streaming-TTS producer blocked forever / leaked the upstream connection with no consumer (`4789ec4`): `wait_for` timeout on `queue.put` abandons a dead consumer; generator `aclose()`d; `AudioStore` holds the producer task so eviction/TTL/shutdown cancels it.
+- [x] HeroPane double-rendered a `.bullets`/calendar reply (`d93a301`): `ActionCard.residual(in:)` strips the card-consumed lines; only the remainder renders.
+- [x] `AudioStore` TTL + disk cleanup (`4789ec4`): opportunistic 30-min sweep of files+streams; lifespan `store.close()` cancels producers + `rmtree`s the temp dir.
+- [x] `PhoneWatchBridge` stale settings (`d93a301`): inject the app's shared `AppSettings` via `start(settings:)` (weak, mirrors NotificationManager) so Watch turns read live values.
+- [x] Bullets ActionCard over-trigger (`d93a301`): majority threshold 0.6→0.7.
 
-**Security hardening (needs product decision):**
-- [ ] `/health` unauthenticated + discloses provider/runtime config — gate behind token OR trim to `{status, mock}` (affects the Settings diagnostics view + onboarding test-connection; decide first).
-- [ ] Auth token optional while launchd binds `0.0.0.0` — fail closed on non-loopback bind with empty token, or document the token as mandatory.
+**Security hardening — DONE (2026-06-04):**
+- [x] `/health` disclosure (`6707697`): public response is `{status, mock, scheme}` only (onboarding reachability still token-free); provider/runtime details disclosed only to an authenticated caller (`_token_ok` shared with `_require_token`). iOS diagnostics already sends the token, so it still shows full details.
+- [x] Fail closed on exposed bind (`6707697`): `assert_safe_bind()` refuses to start when bound to a non-loopback host with an empty token; called from `__main__` (the bind path), so `TestClient` stays exempt.
 
 **Architecture (needs design + prioritization):**
 - [ ] Extract a `TurnPipeline`/`HermesTurnService` from the `ConversationViewModel` god-object (and make it testable).

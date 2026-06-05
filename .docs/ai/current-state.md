@@ -4,7 +4,9 @@
 
 ## Active Branch
 
-`main` — working tree clean. Recent: `e21a90d` large-session attach warning + /compact remedy, `a061863` turn timeout 180→300s, `0a6c3f1` thinking ProgressStrip→elapsed time, `f91446f` backlog, `08643f2` ClaudeProbe filter, `d93894e` Phase B Slice 1.
+`main` — working tree clean. Recent: `6707697` security (/health gate + fail-closed bind), `d93a301` iOS list-card double-render + Watch stale-settings, `4789ec4` TTS/AudioStore leak fixes, `e21a90d` large-session attach warning, `a061863` timeout 180→300s, `0a6c3f1` thinking bar→elapsed.
+
+**Bug + security sweep — DONE (2026-06-04), backend LIVE, iOS NOT in a build yet.** Knocked out the open confirmed bugs + both security decisions (user picked: public-status/authed-details for /health; fail-closed at startup for the bind). Backend (`4789ec4` TTS producer timeout + AudioStore TTL/close; `6707697` /health gating + assert_safe_bind) is restart-live. iOS (`d93a301` ActionCard.residual double-render fix + bullets 0.6→0.7; PhoneWatchBridge shared AppSettings) **needs a build to reach the device.** 117 backend tests green. See roadmap Backlog "Other confirmed"/"Security hardening" (all checked).
 
 **TestFlight: build 19 uploaded (2026-06-04)** — 14=P0–P3; 15=+Phase A; 16=+agent-aware UI/token-fix/accent; 17=+Phase B (approval loop) + <AGENT> VOICE title; 18=thinking-bar→elapsed-time; **19=large-session attach warning + /compact remedy**. Backend restarted — Phase B broker + ClaudeProbe filter + 300s timeout + `size_bytes` all LIVE. **Awaiting on-device test of Phase B (build 17+) on a SMALL session** (a huge session times out on resume — that's the warning this feature adds).
 

@@ -5,6 +5,7 @@ import SwiftUI
 /// to answer; the turn resumes on the answer POST.
 struct ApprovalCard: View {
     let approval: ConversationViewModel.PendingApproval
+    var listening: Bool = false
     let onAnswer: (Bool) -> Void
 
     var body: some View {
@@ -28,6 +29,7 @@ struct ApprovalCard: View {
                     .foregroundStyle(HVColor.creamDim)
                     .lineLimit(3)
             }
+            if listening { listeningRow("Listening — say “yes” or “no”") }
             HStack(spacing: 10) {
                 cardButton("Deny", tint: HVColor.dangerSoft) { onAnswer(false) }
                 cardButton("Approve", tint: HVColor.amber, filled: true) { onAnswer(true) }
@@ -43,6 +45,7 @@ struct ApprovalCard: View {
 /// tool). Single-select answers on tap; multi-select gathers then Send.
 struct QuestionCard: View {
     let question: ConversationViewModel.PendingQuestion
+    var listening: Bool = false
     let onAnswer: ([String]) -> Void
 
     @State private var selected: Set<String> = []
@@ -62,6 +65,11 @@ struct QuestionCard: View {
                 .font(HVFont.body)
                 .foregroundStyle(HVColor.cream)
                 .multilineTextAlignment(.leading)
+            if listening {
+                listeningRow(question.multi
+                    ? "Listening — name the options"
+                    : "Listening — say an option")
+            }
             ForEach(question.options, id: \.self) { opt in
                 Button { tap(opt) } label: {
                     HStack(spacing: 8) {
@@ -107,6 +115,24 @@ struct QuestionCard: View {
 }
 
 // MARK: - shared bits
+
+/// A subtle "listening for your spoken answer" affordance shown on a card while
+/// the voice-answer listener is armed. Purely informational — the buttons still
+/// work, and the mic button keeps its barge-in/cancel meaning.
+@ViewBuilder
+private func listeningRow(_ label: String) -> some View {
+    HStack(spacing: 7) {
+        Image(systemName: "waveform")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(HVColor.amber)
+            .symbolEffect(.variableColor.iterative, options: .repeating)
+        Text(label)
+            .font(HVFont.captionTiny)
+            .foregroundStyle(HVColor.creamDim)
+        Spacer()
+    }
+    .padding(.vertical, 2)
+}
 
 private var cardBackground: some View {
     RoundedRectangle(cornerRadius: 14)

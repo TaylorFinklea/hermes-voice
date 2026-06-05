@@ -106,6 +106,14 @@ final class ConversationViewModel: ObservableObject {
     private let player = AudioPlayer()
     private var currentTurn: Task<Void, Never>? = nil
 
+    // Phase B: voice answers. A dedicated capture engine (separate from the
+    // push-to-talk recorder + the mic button, which stays barge-in/cancel) auto-
+    // listens for a spoken yes/no/option while an approval/question card is up.
+    private let answerCapture = ConversationCaptureEngine()
+    private var answerTask: Task<Void, Never>? = nil
+    /// True while listening for a spoken answer — drives the card's mic affordance.
+    @Published private(set) var listeningForAnswer = false
+
     init(settings: AppSettings) {
         self.settings = settings
     }
@@ -372,7 +380,7 @@ final class ConversationViewModel: ObservableObject {
                     pendingApproval = PendingApproval(
                         turnId: tid, requestId: reqId, title: title, preview: preview
                     )
-                    speakPrompt(title)
+                    presentPending(spoken: title)
                 }
             case .question(let reqId, let prompt, let options, let multi):
                 if let tid = currentTurnId {
@@ -380,7 +388,7 @@ final class ConversationViewModel: ObservableObject {
                         turnId: tid, requestId: reqId, prompt: prompt,
                         options: options, multi: multi
                     )
-                    speakPrompt(prompt)
+                    presentPending(spoken: prompt)
                 }
             }
         }
@@ -566,6 +574,7 @@ final class ConversationViewModel: ObservableObject {
     func answerApproval(allow: Bool) {
         guard let p = pendingApproval else { return }
         pendingApproval = nil
+        stopVoiceAnswer()
         let api = self.api
         Task {
             try? await api.answerTurn(
@@ -578,23 +587,121 @@ final class ConversationViewModel: ObservableObject {
     func answerQuestion(_ selected: [String]) {
         guard let q = pendingQuestion else { return }
         pendingQuestion = nil
+        stopVoiceAnswer()
         let api = self.api
         Task {
             try? await api.answerTurn(turnId: q.turnId, requestId: q.requestId, value: selected)
         }
     }
 
-    /// Speak a pending prompt aloud when an on-device voice is active, so the
-    /// approval loop stays voice-forward ("Claude wants to edit …").
-    private func speakPrompt(_ text: String) {
+    /// Speak the pending prompt aloud (when an on-device voice is active), then —
+    /// if the listening model is ready — auto-listen for a spoken answer. The mic
+    /// button is untouched (still barge-in/cancel); this is a separate listener,
+    /// so saying "yes"/"no"/an option resolves the card hands-free. Tap still
+    /// works; whichever lands first wins.
+    private func presentPending(spoken text: String) {
         guard settings.isLocalVoiceSelected, !text.isEmpty else { return }
-        Task { await LocalSpeaker.shared.speak(text, voice: settings.localVoiceName) }
+        answerTask?.cancel()
+        answerTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await LocalSpeaker.shared.speak(text, voice: self.settings.localVoiceName)
+            guard !Task.isCancelled, LocalVad.shared.isReady else { return }
+            // Let the session settle between speaking (.playback) and listening
+            // (.playAndRecord) — the same guard the conversation-mode loop uses.
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            if Task.isCancelled { return }
+            await self.listenForAnswerLoop()
+        }
+    }
+
+    /// Listen → transcribe → parse → submit, retrying a couple times on an
+    /// empty/ambiguous utterance before falling back to tap-only.
+    private func listenForAnswerLoop() async {
+        var attempts = 0
+        while !Task.isCancelled, attempts < 3 {
+            guard pendingApproval != nil || pendingQuestion != nil else { return }
+            listeningForAnswer = true
+            let samples: [Float]
+            do { samples = try await answerCapture.listen() }
+            catch { listeningForAnswer = false; return }
+            listeningForAnswer = false
+            if Task.isCancelled { return }
+
+            let heard = (try? await LocalTranscriber.shared.transcribe(samples: samples)) ?? ""
+            let trimmed = heard.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { attempts += 1; continue }
+
+            if pendingApproval != nil, let allow = Self.parseYesNo(trimmed) {
+                answerApproval(allow: allow)
+                return
+            }
+            if let q = pendingQuestion,
+               let picks = Self.parseSelection(trimmed, options: q.options, multi: q.multi) {
+                answerQuestion(picks)
+                return
+            }
+            attempts += 1  // heard speech but couldn't map it — try once more
+        }
+        listeningForAnswer = false
+    }
+
+    private func stopVoiceAnswer() {
+        answerTask?.cancel()
+        answerTask = nil
+        answerCapture.stop()
+        listeningForAnswer = false
+    }
+
+    /// Map a spoken utterance to approve (true) / deny (false), or nil if unclear.
+    /// A "no" word wins over a "yes" word (deny is the safer default).
+    static func parseYesNo(_ s: String) -> Bool? {
+        let t = " \(s.lowercased()) "
+        let no = ["no", "nope", "nah", "deny", "denied", "cancel", "stop",
+                  "reject", "rejected", "don't", "do not", "negative", "skip",
+                  "decline"]
+        if no.contains(where: { t.contains(" \($0) ") || t.contains("\($0).") }) {
+            return false
+        }
+        let yes = ["yes", "yeah", "yep", "yup", "approve", "approved", "sure",
+                   "ok", "okay", "confirm", "confirmed", "go ahead", "do it",
+                   "allow", "accept", "affirmative", "correct"]
+        if yes.contains(where: { t.contains(" \($0) ") || t.contains("\($0).") }) {
+            return true
+        }
+        return nil
+    }
+
+    /// Map an utterance to selected option(s): a label substring match, else an
+    /// ordinal ("first"/"two"/"option 3"). Multi-select keeps every matched
+    /// label; single-select takes the first. nil when nothing matches.
+    static func parseSelection(_ s: String, options: [String], multi: Bool) -> [String]? {
+        let t = s.lowercased()
+        var matched = options.filter { !$0.isEmpty && t.contains($0.lowercased()) }
+        if matched.isEmpty, let idx = ordinalIndex(in: t), idx < options.count {
+            matched = [options[idx]]
+        }
+        guard !matched.isEmpty else { return nil }
+        return multi ? matched : [matched[0]]
+    }
+
+    private static func ordinalIndex(in t: String) -> Int? {
+        let words: [(String, Int)] = [
+            ("first", 0), ("second", 1), ("third", 2), ("fourth", 3), ("fifth", 4),
+            ("number one", 0), ("number two", 1), ("number three", 2),
+            ("option one", 0), ("option two", 1), ("option three", 2),
+            ("one", 0), ("two", 1), ("three", 2), ("four", 3), ("five", 4),
+        ]
+        for (w, i) in words where t.contains(w) { return i }
+        for (d, i) in [("1", 0), ("2", 1), ("3", 2), ("4", 3), ("5", 4)]
+        where t.contains(d) { return i }
+        return nil
     }
 
     private func clearPending() {
         pendingApproval = nil
         pendingQuestion = nil
         currentTurnId = nil
+        stopVoiceAnswer()
     }
 
     /// Resume a past conversation by its Hermes session id. The transcript

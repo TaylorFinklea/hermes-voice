@@ -1,0 +1,92 @@
+[
+  {
+    "name": "heading",
+    "input": "## The core idea",
+    "expected": "The core idea"
+  },
+  {
+    "name": "emphasis_bold_italic",
+    "input": "Push **operates** on your *Mac*.",
+    "expected": "Push operates on your Mac."
+  },
+  {
+    "name": "bold_underscore_and_strike",
+    "input": "This is __important__ and ~~gone~~.",
+    "expected": "This is important and gone."
+  },
+  {
+    "name": "inline_code",
+    "input": "Run `make_speakable` now.",
+    "expected": "Run make_speakable now."
+  },
+  {
+    "name": "link",
+    "input": "See [the docs](https://example.com) here.",
+    "expected": "See the docs here."
+  },
+  {
+    "name": "autolink",
+    "input": "Visit <https://example.com> today.",
+    "expected": "Visit https://example.com today."
+  },
+  {
+    "name": "image",
+    "input": "Look ![a cat](https://example.com/cat.png) there.",
+    "expected": "Look a cat there."
+  },
+  {
+    "name": "bullets",
+    "input": "- first item\n- second item",
+    "expected": "first item\nsecond item"
+  },
+  {
+    "name": "numbered",
+    "input": "1. first step\n2. second step",
+    "expected": "first step\nsecond step"
+  },
+  {
+    "name": "fenced_code_closed",
+    "input": "Here is the fix:\n```python\nprint(1)\n```\nThat should work.",
+    "expected": "Here is the fix:\n(code shown on screen)\nThat should work."
+  },
+  {
+    "name": "fenced_code_unclosed_keeps_tail",
+    "input": "Here:\n```\nprint(1)\nstill going",
+    "expected": "Here:\nprint(1)\nstill going"
+  },
+  {
+    "name": "ascii_diagram_in_fence",
+    "input": "Architecture:\n```\n+----+    +----+\n| iOS| -> | Mac|\n+----+    +----+\n```\nThat's the flow.",
+    "expected": "Architecture:\n(code shown on screen)\nThat's the flow."
+  },
+  {
+    "name": "table",
+    "input": "| Name | Role |\n| --- | --- |\n| Sam | Dev |",
+    "expected": "Name, Role\nSam, Dev"
+  },
+  {
+    "name": "table_crlf",
+    "input": "| Name | Role |\r\n| --- | --- |\r\n| Sam | Dev |",
+    "expected": "Name, Role\nSam, Dev"
+  },
+  {
+    "name": "blockquote",
+    "input": "> a quoted line",
+    "expected": "a quoted line"
+  },
+  {
+    "name": "horizontal_rule",
+    "input": "before\n\n---\n\nafter",
+    "expected": "before\n\nafter"
+  },
+  {
+    "name": "plain_prose_unchanged",
+    "input": "Saved the file.",
+    "expected": "Saved the file."
+  },
+  {
+    "name": "plain_multisentence_unchanged",
+    "input": "Reminder set for five PM. I'll let you know.",
+    "expected": "Reminder set for five PM. I'll let you know."
+  }
+]

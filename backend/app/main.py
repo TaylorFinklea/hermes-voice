@@ -49,6 +49,7 @@ from .models import (
 )
 from .session_audit import fetch_tool_calls_since
 from .sessions import get_session, list_sessions
+from .speakable import make_speakable
 from .stt import STTProvider, make_stt
 from .tts import TTSProvider, make_tts
 
@@ -425,7 +426,11 @@ def _register_routes(app: FastAPI) -> None:
                 status_code=503, detail="No TTS provider configured."
             )
         try:
-            audio_url = _start_stream(app, tts, body.text, voice_id=body.voice_id)
+            # De-markdown the spoken copy here too: replay re-synthesizes the
+            # RAW stored assistant text (history-tap sends message.text; the
+            # scheduled-push auto-play sends the raw assistant_text), so without
+            # this TTS would still read "##"/asterisks/code fences aloud. Idempotent.
+            audio_url = _start_stream(app, tts, make_speakable(body.text), voice_id=body.voice_id)
         except Exception as e:
             logger.warning("replay tts error: %s", e)
             raise HTTPException(status_code=502, detail=f"tts failed: {e}") from e
@@ -749,8 +754,10 @@ async def _run_turn(
     if tts is not None and tts_mode != "none":
         try:
             # IMPORTANT: only the assistant prose is synthesized. Tool calls
-            # are never spoken — they're for visual auditing only.
-            audio_url = _start_stream(app, tts, reply.text, voice_id=voice_id)
+            # are never spoken — they're for visual auditing only. The spoken
+            # copy is de-markdowned (make_speakable) so TTS never reads "##",
+            # asterisks, or code fences aloud; the displayed text stays raw.
+            audio_url = _start_stream(app, tts, make_speakable(reply.text), voice_id=voice_id)
         except Exception as e:
             logger.warning("tts setup error (returning text-only): %s", e)
 
@@ -823,7 +830,9 @@ async def _stream_turn(
                 audio_url: str | None = None
                 if tts is not None and ev.text and tts_mode != "none":
                     try:
-                        audio_url = _start_stream(app, tts, ev.text, voice_id=voice_id)
+                        # Speak the de-markdowned copy; the emitted assistant
+                        # text above stays raw for the transcript.
+                        audio_url = _start_stream(app, tts, make_speakable(ev.text), voice_id=voice_id)
                     except Exception as e:
                         logger.warning("stream tts setup error: %s", e)
                 if audio_url:

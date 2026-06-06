@@ -35,7 +35,7 @@ from claude_agent_sdk import (
     tool,
 )
 
-from .adapters.claude import _VOICE_PRELUDE, session_cwd_from_disk
+from .adapters.claude import _VOICE_SYSTEM_PROMPT, session_cwd_from_disk
 from .session_audit import _preview
 
 logger = logging.getLogger("hermes_voice")
@@ -133,7 +133,12 @@ async def _drive(
 
     ask_server = create_sdk_mcp_server(name="voice", version="1.0.0", tools=[ask_user])
 
-    shaped = user_text if session_id else f"{_VOICE_PRELUDE}\n\n{user_text}"
+    # Voice-shape every turn via the system prompt (applied on resume too), not
+    # a first-turn user prefix. MUST be the preset+append dict — a bare str maps
+    # to --system-prompt and REPLACES Claude Code's default prompt (breaks tool
+    # use / CLAUDE.md loading), and None maps to --system-prompt "" which wipes
+    # it. preset+append maps to --append-system-prompt and preserves the default.
+    shaped = user_text
     options = ClaudeAgentOptions(
         permission_mode="default",          # safe reads auto; writes/cmds -> can_use_tool
         cwd=cwd,
@@ -142,6 +147,11 @@ async def _drive(
         mcp_servers={"voice": ask_server},
         allowed_tools=["mcp__voice__ask_user"],
         setting_sources=["project"],        # load the repo's CLAUDE.md; skip global hooks
+        system_prompt={
+            "type": "preset",
+            "preset": "claude_code",
+            "append": _VOICE_SYSTEM_PROMPT,
+        },
     )
 
     final_text = ""
@@ -172,7 +182,10 @@ async def _drive(
                 if tts is not None and text and tts_mode != "none":
                     try:
                         from .main import _start_stream
-                        audio_url = _start_stream(app, tts, text, voice_id=voice_id)
+                        from .speakable import make_speakable
+                        # Speak the de-markdowned copy; the emitted assistant
+                        # text above stays raw for the transcript.
+                        audio_url = _start_stream(app, tts, make_speakable(text), voice_id=voice_id)
                         if audio_url:
                             broker.emit(turn_id, {"type": "audio", "url": audio_url})
                     except Exception as e:  # noqa: BLE001

@@ -152,3 +152,23 @@ def test_base_args_readonly_vs_write(tmp_path):
     assert "plan" in ro and "Read,Bash(git *)" in ro and "acceptEdits" not in ro
     wr = a._base_args("hi", None, read_only=False)
     assert "acceptEdits" in wr and "plan" not in wr
+
+
+def test_base_args_voice_system_prompt_on_every_turn(tmp_path):
+    """The voice instruction is a per-invocation --append-system-prompt flag,
+    present on BOTH a fresh turn and a --resume turn (the attached-session bug),
+    and the prompt itself is no longer prelude-prefixed."""
+    from app.adapters.claude import _VOICE_SYSTEM_PROMPT, ClaudeAdapter
+    from app.config import Settings
+
+    a = ClaudeAdapter(Settings(harness_workspace_dir=str(tmp_path)))
+    for session_id in (None, "sid"):
+        args = a._base_args("hi", session_id, read_only=False)
+        assert "--append-system-prompt" in args
+        i = args.index("--append-system-prompt")
+        assert args[i + 1] == _VOICE_SYSTEM_PROMPT
+        # raw prompt, not prelude-prefixed
+        assert args[args.index("-p") + 1] == "hi"
+    # resume case still carries --resume alongside the system prompt
+    resumed = a._base_args("hi", "sid", read_only=True)
+    assert "--resume" in resumed and "--append-system-prompt" in resumed

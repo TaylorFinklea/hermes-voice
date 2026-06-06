@@ -41,17 +41,25 @@ from ..harness import HarnessSession
 from ..hermes import HermesError, HermesReply, StreamReply, StreamTool
 from ..session_audit import ToolCallSummary, _preview, _truncate
 
-# Same voice-shaping prelude philosophy as Hermes, but kept local so the Claude
-# adapter can be tuned independently. Prepended only on the FIRST turn; on
-# --resume turns the session already carries it.
-_VOICE_PRELUDE = (
-    "You are answering through a voice interface; your reply is read aloud "
-    "by text-to-speech and heard once. Write in plain spoken prose — no "
-    "markdown, no bullet lists, no code blocks, no headings, no asterisks. "
-    "Do not narrate which tools you used; only confirm the result. Keep "
-    "completed-action replies to one short sentence; answer informational "
-    "questions in one or two sentences. Do not repeat the question back and "
-    "do not preamble with \"Sure\", \"I'll\", \"Let me\", or \"Here's\"."
+# Voice-shaping instruction for Claude, delivered as a per-invocation system
+# prompt (CLI: --append-system-prompt; SDK: appended to the claude_code preset)
+# on EVERY turn — fresh AND resumed. A user-message prelude only shaped the
+# first turn, so an *attached* (resumed) session reverted to full markdown that
+# TTS then read aloud; a system prompt is applied every turn and is the stronger
+# instruction. It is a per-invocation flag, never written into the session
+# transcript, so a later `claude --resume <id>` in a terminal is unaffected and
+# behaves normally — voice shaping is scoped to harness-driven turns only.
+_VOICE_SYSTEM_PROMPT = (
+    "Your replies are delivered through a voice interface and read aloud by "
+    "text-to-speech, then heard once — the user is listening, not reading. "
+    "Always answer in plain spoken prose: never use markdown, headings, bullet "
+    "or numbered lists, tables, code blocks, code fences, or asterisks. Never "
+    "paste code, file contents, diffs, logs, or ASCII diagrams — describe the "
+    "result in a sentence instead. Keep completed-action confirmations to one "
+    "short sentence and informational answers to one or two sentences; expand "
+    "only when explicitly asked. Do not narrate which tools you used, do not "
+    "repeat the question back, and do not preamble with \"Sure\", \"I'll\", "
+    "\"Let me\", or \"Here's\"."
 )
 
 
@@ -395,10 +403,11 @@ class ClaudeAdapter:
     def _base_args(
         self, prompt: str, session_id: str | None, read_only: bool
     ) -> list[str]:
-        shaped = prompt
-        if _VOICE_PRELUDE and not session_id:
-            shaped = f"{_VOICE_PRELUDE}\n\n{prompt}"
-        args = [self.bin, "-p", shaped]
+        args = [self.bin, "-p", prompt]
+        # Voice-shape EVERY turn (fresh and resumed) via a per-invocation system
+        # prompt; --append-system-prompt composes with -p, --resume, and either
+        # --permission-mode and is never stored in the session transcript.
+        args += ["--append-system-prompt", _VOICE_SYSTEM_PROMPT]
         if read_only:
             # Attached to a real repo: read/analyze only — no edits or mutating
             # commands. Write-by-voice arrives with the approval layer (Phase B).

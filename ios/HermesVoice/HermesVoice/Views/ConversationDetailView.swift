@@ -136,11 +136,8 @@ private struct MessageRow: View {
             case "assistant":
                 HStack(alignment: .top, spacing: 4) {
                     Text("←").foregroundStyle(HVColor.gold).font(HVFont.heroReply)
-                    Text(message.text)
-                        .font(HVFont.heroReply)
-                        .foregroundStyle(HVColor.cream)
+                    MarkdownText(markdown: message.text, bodyFont: HVFont.heroReply, color: HVColor.cream)
                         .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if !message.text.isEmpty {
                     Button(action: onReplay) {

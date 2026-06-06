@@ -95,7 +95,8 @@ From the adversarially-verified review (40 kept / 34 confirmed; harness-deck rep
 **Architecture (needs design + prioritization):**
 - [ ] Extract a `TurnPipeline`/`HermesTurnService` from the `ConversationViewModel` god-object (and make it testable).
 - [ ] Inject one `BackendClient` instead of ad-hoc `HermesVoiceAPI(...)` in ~8 sites.
-- [ ] Add an iOS test target (start with `pairedTurns`, decoders, VM transitions).
+- [ ] Add an iOS test target (start with `pairedTurns`, decoders, VM transitions, **+ `LocalSpeaker.makeSpeakable` parity vs backend `make_speakable` using the shared fixture corpus `backend/tests/fixtures/speakable_cases.json`** — the Swift mirror is currently hand-matched only).
+- [ ] Migrate Hermes + Codex voice preludes to a per-invocation system prompt like Claude (done 2026-06-05): they still prepend a first-turn-only USER-text `_VOICE_PRELUDE`, so resumed turns get no shaping. The `make_speakable` sanitizer already protects their *spoken* output, but the model still emits verbose markdown on resume. Needs verifying whether the `hermes`/`codex` CLIs expose an append-system-prompt equivalent.
 - [ ] Long-lived per-provider `httpx.AsyncClient` (TLS reuse) for TTS/STT/MCP.
 - [ ] `Semaphore(2-3)` around `_fire_one`; text-only path flag for scheduled fires.
 - [ ] Typed tool-output schema (unblocks richer ActionCard variants).

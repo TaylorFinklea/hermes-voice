@@ -118,20 +118,35 @@ struct MainView: View {
     }
 
     private var heroScroll: some View {
-        ScrollView {
-            // In hands-free mode, the listening pane replaces the hero while we
-            // wait for the user; once a turn starts (.turn) the normal
-            // thinking/speaking hero takes over.
-            if conversationMode.phase == .listening {
-                HeroListeningHandsFree(capture: conversationMode.capture)
-                    .padding(.bottom, 180)
-            } else {
-                HeroPane(textInput: $textInput, isTyping: $typingMode, onSendText: sendText)
-                    .padding(.bottom, 180)
+        ScrollViewReader { proxy in
+            ScrollView {
+                // In hands-free mode, the listening pane replaces the hero while we
+                // wait for the user; once a turn starts (.turn) the normal
+                // thinking/speaking hero takes over.
+                if conversationMode.phase == .listening {
+                    HeroListeningHandsFree(capture: conversationMode.capture)
+                        .padding(.bottom, 180)
+                } else {
+                    HeroPane(textInput: $textInput, isTyping: $typingMode, onSendText: sendText)
+                        .padding(.bottom, 180)
+                }
+                // Anchor the live feed follows as tool-call chips / the reply
+                // append, so streaming tool calls don't march off-screen.
+                Color.clear.frame(height: 1).id(Self.heroBottomAnchor)
+            }
+            .scrollIndicators(.hidden)
+            // Key on the last message id (not count): it changes on every
+            // append AND on the authoritative `.tools` removeAll+re-append swap,
+            // which can keep the count unchanged and would otherwise not scroll.
+            .onChange(of: conversation.messages.last?.id) {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo(Self.heroBottomAnchor, anchor: .bottom)
+                }
             }
         }
-        .scrollIndicators(.hidden)
     }
+
+    private static let heroBottomAnchor = "heroBottomAnchor"
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {

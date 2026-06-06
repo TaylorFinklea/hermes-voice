@@ -327,16 +327,10 @@ private struct HeroSpeaks: View {
                     ActionCardView(card: card)
                     let residual = card.residual(in: assistantText)
                     if !residual.isEmpty {
-                        Text("←  \(residual)")
-                            .font(HVFont.heroReply)
-                            .foregroundStyle(HVColor.cream)
-                            .fixedSize(horizontal: false, vertical: true)
+                        AssistantReply(text: residual, bodyFont: HVFont.heroReply)
                     }
                 } else {
-                    Text("←  \(assistantText)")
-                        .font(HVFont.heroSpeak.weight(.medium))
-                        .foregroundStyle(HVColor.cream)
-                        .fixedSize(horizontal: false, vertical: true)
+                    AssistantReply(text: assistantText, bodyFont: HVFont.heroSpeak.weight(.medium))
                 }
             }
         }
@@ -382,10 +376,7 @@ private struct HeroJustArrived: View {
                         if let card { ActionCardView(card: card) }
                         let shown = card?.residual(in: assistantText) ?? assistantText
                         if !shown.isEmpty {
-                            Text("←  \(shown)")
-                                .font(HVFont.heroReply)
-                                .foregroundStyle(HVColor.cream)
-                                .fixedSize(horizontal: false, vertical: true)
+                            AssistantReply(text: shown, bodyFont: HVFont.heroReply)
                         }
                     }
                 }
@@ -556,6 +547,22 @@ struct SectionLabel: View {
             .font(HVFont.captionTiny.weight(.semibold))
             .tracking(1.2)
             .foregroundStyle(HVColor.bronze)
+    }
+}
+
+/// The "←" gutter + a markdown-rendered reply body. Shared by the speaking and
+/// just-arrived heroes so the assistant reply renders formatted (headings,
+/// lists, code) instead of raw markdown. The spoken copy is de-markdowned
+/// separately, so the screen can be rich while the ear hears clean prose.
+private struct AssistantReply: View {
+    let text: String
+    var bodyFont: Font = HVFont.heroReply
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text("←").font(bodyFont).foregroundStyle(HVColor.cream)
+            MarkdownText(markdown: text, bodyFont: bodyFont, color: HVColor.cream)
+        }
     }
 }
 

@@ -88,7 +88,11 @@ final class LocalSpeaker: ObservableObject {
     /// swallowed — the reply text is already on screen.
     func speak(_ text: String, voice: String) async {
         stop()
-        let sentences = Self.splitIntoSentences(text)
+        // Strip markdown/code so on-device TTS (the tts=none path, where the
+        // backend never sees the text) doesn't read "##", asterisks, or code
+        // fences aloud. Mirror of backend app/speakable.py make_speakable;
+        // shared corpus: backend/tests/fixtures/speakable_cases.json.
+        let sentences = Self.splitIntoSentences(Self.makeSpeakable(text))
         guard !sentences.isEmpty else { return }
 
         let task = Task { @MainActor [weak self] in
@@ -231,6 +235,96 @@ final class LocalSpeaker: ObservableObject {
     enum SpeakerError: Error { case playbackFailed }
 
     private static let downloadedKey = "hv.kokoroDownloaded"
+
+    // MARK: - Speakable text (markdown -> spoken prose)
+
+    /// Spoken in place of a fenced code block. Mirrors `CODE_PLACEHOLDER` in
+    /// backend/app/speakable.py.
+    static let speakableCodePlaceholder = "(code shown on screen)"
+
+    /// Strip markdown/code formatting so TTS reads natural prose. Deterministic
+    /// mirror of backend `make_speakable` (same ordered rules + the shared
+    /// fixture corpus in backend/tests/fixtures/speakable_cases.json). Idempotent.
+    static func makeSpeakable(_ text: String) -> String {
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
+        let lines = dropCodeFences(text.components(separatedBy: "\n"))
+        var cleaned: [String] = []
+        for rawLine in lines {
+            var line = rawLine
+            // Horizontal rule / table separator rows -> dropped.
+            if reMatches(#"^\s*([-*_])(?:\s*\1){2,}\s*$"#, line) { continue }
+            if reMatches(#"^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)+\|?\s*$"#, line) { continue }
+            line = reReplace(#"^\s*#{1,6}\s+"#, "", line)   // heading marker
+            line = reReplace(#"^\s*>\s?"#, "", line)        // blockquote
+            line = reReplace(#"^\s*[-*+]\s+"#, "", line)    // bullet marker
+            line = reReplace(#"^\s*\d+[.)]\s+"#, "", line)  // numbered marker
+            // Table data row -> comma-separated clause.
+            if line.filter({ $0 == "|" }).count >= 2 {
+                // .whitespacesAndNewlines (not .whitespaces) so a CRLF row's
+                // trailing \r is stripped like Python str.strip() — otherwise a
+                // phantom trailing cell + stray CR diverge from make_speakable.
+                let body = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "|"))
+                let cells = body.components(separatedBy: "|")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                line = cells.joined(separator: ", ")
+            }
+            cleaned.append(stripInlineMarkdown(line))
+        }
+        var out = cleaned.joined(separator: "\n")
+        out = reReplace(#"\n{3,}"#, "\n\n", out)
+        return out.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Replace each *closed* fenced code block with a placeholder. An unclosed
+    /// fence is treated as ordinary text (marker dropped) so a malformed reply
+    /// never loses its tail.
+    private static func dropCodeFences(_ lines: [String]) -> [String] {
+        let fence = #"^\s*(?:`{3,}|~{3,})"#
+        var out: [String] = []
+        var i = 0
+        let n = lines.count
+        while i < n {
+            if !reMatches(fence, lines[i]) {
+                out.append(lines[i]); i += 1; continue
+            }
+            var j = i + 1
+            while j < n, !reMatches(fence, lines[j]) { j += 1 }
+            if j < n {
+                out.append(speakableCodePlaceholder)
+                i = j + 1
+            } else {
+                i += 1
+            }
+        }
+        return out
+    }
+
+    private static func stripInlineMarkdown(_ s: String) -> String {
+        var line = s
+        line = reReplace(#"!\[([^\]]*)\]\([^)]*\)"#, "$1", line)          // image
+        line = reReplace(#"\[([^\]]+)\]\([^)]*\)"#, "$1", line)           // link
+        line = reReplace(#"<((?:https?://|mailto:)[^>]+)>"#, "$1", line)  // autolink
+        line = reReplace(#"`+([^`]+)`+"#, "$1", line)                     // inline code
+        line = reReplace(#"\*\*([^*]+)\*\*"#, "$1", line)                 // bold *
+        line = reReplace(#"__([^_]+)__"#, "$1", line)                     // bold _
+        line = reReplace(#"~~([^~]+)~~"#, "$1", line)                     // strikethrough
+        line = reReplace(#"(?<![\w*])\*([^*\n]+)\*(?![\w*])"#, "$1", line)  // italic *
+        line = reReplace(#"(?<![\w_])_([^_\n]+)_(?![\w_])"#, "$1", line)    // italic _
+        return line
+    }
+
+    private static func reReplace(_ pattern: String, _ template: String, _ s: String) -> String {
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return s }
+        let range = NSRange(s.startIndex..., in: s)
+        return re.stringByReplacingMatches(in: s, options: [], range: range, withTemplate: template)
+    }
+
+    private static func reMatches(_ pattern: String, _ s: String) -> Bool {
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return false }
+        return re.firstMatch(in: s, options: [], range: NSRange(s.startIndex..., in: s)) != nil
+    }
 }
 
 /// Bridges `AVAudioPlayer`'s delegate callback onto the main actor.

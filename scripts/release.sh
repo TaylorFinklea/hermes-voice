@@ -17,10 +17,12 @@
 # This is a MONOREPO: the iOS project lives under ios/HermesVoice. The script
 # handles the path juggling; run it from anywhere in the repo.
 #
-# App Store Connect API auth (override defaults via env):
-#   ASC_API_KEY_PATH   — path to the .p8 key (default: ~/.appstoreconnect/AuthKey_J79935N6P6.p8)
-#   ASC_API_KEY_ID     — key ID matching the .p8 filename     (default: J79935N6P6)
-#   ASC_API_ISSUER_ID  — App Store Connect issuer UUID         (default: fe27785a-1413-46ff-bd82-111de0da024f)
+# App Store Connect API auth — the real key id + issuer id live in a gitignored
+# .release-ios.env at the repo root (copy .release-ios.env.example and fill it
+# in) so they stay out of the public repo. You can also just export these:
+#   ASC_API_KEY_ID     — key ID matching the .p8 filename
+#   ASC_API_ISSUER_ID  — App Store Connect issuer UUID
+#   ASC_API_KEY_PATH   — path to the .p8 key (default: ~/.appstoreconnect/AuthKey_<KEY_ID>.p8)
 #
 # This is the ASC *upload* key, NOT the APNs push key — different keys from
 # different parts of the developer portal. The ASC key is account-wide and
@@ -59,10 +61,15 @@ done
 # ---------- preflight ----------
 command -v xcodegen >/dev/null || fail "xcodegen not found (brew install xcodegen)"
 
-ASC_KEY_PATH="${ASC_API_KEY_PATH:-$HOME/.appstoreconnect/AuthKey_J79935N6P6.p8}"
-ASC_KEY_ID="${ASC_API_KEY_ID:-J79935N6P6}"
-ASC_ISSUER="${ASC_API_ISSUER_ID:-fe27785a-1413-46ff-bd82-111de0da024f}"
+# Real ASC identifiers live in a gitignored .release-ios.env (out of the public
+# repo); fall back to anything already exported in the shell.
+[[ -f "$REPO_ROOT/.release-ios.env" ]] && source "$REPO_ROOT/.release-ios.env"
 
+ASC_KEY_ID="${ASC_API_KEY_ID:-}"
+ASC_ISSUER="${ASC_API_ISSUER_ID:-}"
+ASC_KEY_PATH="${ASC_API_KEY_PATH:-$HOME/.appstoreconnect/AuthKey_${ASC_KEY_ID}.p8}"
+
+[[ -n "$ASC_KEY_ID" && -n "$ASC_ISSUER" ]] || fail "Missing ASC_API_KEY_ID / ASC_API_ISSUER_ID. Copy .release-ios.env.example to .release-ios.env and fill it in (gitignored), or export them."
 [[ -f "$ASC_KEY_PATH" ]] || fail "ASC API key not found at $ASC_KEY_PATH. Set ASC_API_KEY_PATH or place the .p8 there."
 
 PROJECT_YML="$IOS_DIR/project.yml"

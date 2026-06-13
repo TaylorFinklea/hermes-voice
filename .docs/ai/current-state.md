@@ -2,6 +2,31 @@
 
 > Updated at the end of every work session. Read this first.
 
+## Hermes rock-solid — ACP warm-server migration (IN PROGRESS, 2026-06-13)
+
+**Initiative:** make Hermes trustworthy end-to-end (user directive). Root cause
+found + spike-verified: hermes-voice cold-starts the whole agent per turn
+(`hermes chat`), and Hermes's only MCP server (`hermes-voice` schedules) points
+back at THIS backend → blocking MCP discovery stalls 60-120s when the backend is
+busy/restarting = the 2m56s "pong". Fix: drive ONE warm `hermes acp` server.
+Spec: `.docs/ai/phases/hermes-acp-warm-server-spec.md`. **Hermes-only** (other
+harnesses deferred by user). Recon workflow `wiphdg9to`; review workflow `wjv07uts3`.
+
+- **Phase 0 — DONE:** `~/.hermes/config.yaml` `hermes-voice` MCP `connect_timeout: 5`
+  (was unbounded). **User action pending:** kill stale 19-day `hermes` session
+  PID 8503 (leaks an mcp_schedules child) — `kill 8503`.
+- **Phase 1 — DONE (committed):** `backend/app/acp_client.py` warm-ACP client behind
+  `HERMES_USE_ACP` (default OFF); lifespan-managed child; SYNC-observer event
+  collection (race-free — the review caught + we fixed a dispatch race the sentinel
+  approach had; see spec); per-turn/start timeouts, stderr-inherit, per-session lock,
+  child-alive in /health. Live: 20 turns, 0 drops, ~2.3s warm. 176 backend tests green.
+  `agent-client-protocol==0.9.0` added to backend deps. **Not device-tested through the
+  app; flag still OFF in prod — turn it on (HERMES_USE_ACP=1 in backend/.env + restart)
+  to try it.**
+- **Next — Phase 2:** conversation↔ACP session model + voice prelude as session
+  system_prompt (cure verbose-on-resume); confirm History/replay works for ACP UUIDs.
+  Then Phase 3 (resilience: respawn/S2, server-cancel, timeout unification) → Phase 4 cutover.
+
 ## Active Branch
 
 **Remote: PUBLISHED to GitHub 2026-06-05 — `github.com/TaylorFinklea/hermes-voice` (public, MIT). `origin` set, `main` tracks `origin/main`.** Repo was local-only for 89 commits before this (single-machine risk). Secret audit pre-push was clean (no `.env`/`.p8`/keys ever committed; only `.env.example` + a non-secret ElevenLabs voice-id are tracked). **User wants changes PUSHED going forward** (backup priority) — push after committing on this repo. Low-risk public exposure (NOT credentials, optional scrub): ASC key-id/issuer-id in `scripts/release.sh`, tailnet host `scadrial.tailceb58.ts.net` + `/Users/tfinklea` paths in docs.

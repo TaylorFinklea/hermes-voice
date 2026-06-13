@@ -22,9 +22,9 @@ from fastapi import (
 from fastapi.responses import FileResponse, StreamingResponse
 
 from . import mdns, schedules
+from .approvals import ApprovalBroker
 from .audio_store import AudioStore
 from .config import Settings, get_settings
-from .approvals import ApprovalBroker
 from .harness import HARNESS_DISPLAY_NAMES, HarnessClient
 from .hermes import HermesClient, HermesError, MockHermesClient, StreamReply, StreamTool
 from .models import (
@@ -91,7 +91,7 @@ def assert_safe_bind(settings: Settings) -> None:
 
 def create_app(
     *,
-    hermes: HermesClient | None = None,
+    hermes: HarnessClient | None = None,
     stt: STTProvider | None = None,
     tts: TTSProvider | None = None,
     store: AudioStore | None = None,
@@ -101,7 +101,7 @@ def create_app(
     injected_hermes = hermes is not None
 
     if hermes is None:
-        hermes = MockHermesClient(settings) if auto_mock else HermesClient(settings)
+        hermes = _make_hermes(settings, auto_mock)
     if stt is None:
         stt = make_stt(settings)
     if tts is None:
@@ -119,6 +119,15 @@ def create_app(
         # Start the executor loop. It owns its own asyncio.Task and is
         # cancelled on shutdown.
         task = asyncio.create_task(schedules.executor_loop(app))
+        # Warm-ACP: start the long-lived `hermes acp` child so turns skip the
+        # per-turn cold-start. Guarded — only HermesAcpClient has start(); the
+        # mock/legacy clients and injected test fakes don't, so it's a no-op for
+        # them (and tests don't run the lifespan unless used as a context mgr).
+        if not auto_mock and hasattr(app.state.hermes, "start"):
+            try:
+                await app.state.hermes.start()
+            except Exception as e:
+                logger.error("ACP server failed to start (turns will error): %s", e)
         # Advertise over Bonjour/mDNS so the iOS app can discover this backend
         # on the LAN. Best-effort: skipped in mock/dev mode, and a no-op on a
         # headless / no-LAN host. `scheme` matches how __main__ launches uvicorn.
@@ -150,6 +159,12 @@ def create_app(
                 store.close()
             except Exception as e:
                 logger.warning("audio store shutdown error: %s", e)
+            # Tear down the warm ACP child (no-op unless it was started).
+            if hasattr(app.state.hermes, "aclose"):
+                try:
+                    await app.state.hermes.aclose()
+                except Exception as e:
+                    logger.warning("ACP shutdown error: %s", e)
 
     app = FastAPI(
         title="Hermes Voice Backend",
@@ -197,6 +212,18 @@ def _should_auto_mock(s: Settings) -> bool:
     has_hermes = shutil.which(s.hermes_bin) is not None
     has_any_key = bool(s.openai_key or s.groq_key or s.elevenlabs_key)
     return not (has_hermes or has_any_key)
+
+
+def _make_hermes(settings: Settings, auto_mock: bool) -> HarnessClient:
+    """Pick the default Hermes-backing client: mock in dev/test, the warm ACP
+    server when HERMES_USE_ACP is set, else the legacy `hermes chat` subprocess
+    (the fallback). ACP is imported lazily so the common path doesn't load it."""
+    if auto_mock:
+        return MockHermesClient(settings)
+    if settings.use_acp:
+        from .acp_client import HermesAcpClient
+        return HermesAcpClient(settings)
+    return HermesClient(settings)
 
 
 def _token_ok(request: Request, token: str | None) -> bool:
@@ -666,7 +693,7 @@ def _start_stream(
                     continue
                 try:
                     await asyncio.wait_for(queue.put(chunk), timeout=_STREAM_IDLE_TIMEOUT)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning("tts stream abandoned by consumer; closing")
                     return
         except asyncio.CancelledError:

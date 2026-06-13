@@ -172,7 +172,41 @@ xcodebuild -project ios/HermesVoice/HermesVoice.xcodeproj -scheme HermesVoice
   `hermes` session (PID 8503) leaking `mcp_schedules.py` child (5126).
 - Acceptance: a voice turn while the backend is mid-restart no longer hangs minutes.
 
-### Phase 1 — `HermesAcpClient` foundation (the cold-start killer)
+### Phase 1 — `HermesAcpClient` foundation (the cold-start killer) — **DONE (2026-06-13)**
+
+**Shipped:** `backend/app/acp_client.py` drives one warm `hermes acp` child;
+satisfies the `HarnessClient` contract behind `HERMES_USE_ACP`; lifespan
+starts/stops it. Live-verified: 20 rapid turns, **0 dropped replies**, warm avg
+~2.3s (vs the 2m56s subprocess "pong"); session id stable across turns. 176
+backend tests green (20 new in `test_acp_client.py`).
+
+**Key correction from the adversarial review (workflow `wjv07uts3`, 25 agents):**
+the first implementation collected events via the async `Client.session_update`
+callback + a prompt-completion sentinel. The acp dispatcher runs that callback as
+a DETACHED task that can lag the inline-resolved prompt response, so the sentinel
+could fire before the chunks landed — intermittent empty/truncated replies (a
+reviewer reproduced 100% loss under back-to-back delivery; the first integration
+test passed only by luck). **Fixed** by collecting via a SYNC `StreamObserver`
+(the acp `Connection` runs it inline in the receive loop, in wire order), so every
+`session/update` is enqueued before `prompt()` returns — race-free.
+
+**Also folded in from the review (cheap correctness / loud-failure fixes):**
+per-turn `asyncio.timeout` → typed `HermesError` (legacy parity); bounded
+`start()`/`initialize()` timeout + teardown of a partially-started child; child
+`stderr` inherited (no PIPE deadlock on the long-lived child); per-session lock
+serializing resumed turns (no queue-clobber misrouting on barge-in); `describe()`
+reports `child_alive`; auto-approve guards empty options.
+
+**Deferred to Phase 3 (resilience) with notes:** crash detection + respawn (S2 —
+a dead child still wedges turns until restart, now bounded by the per-turn
+timeout instead of hanging forever); server-side `session/cancel` on turn
+abandonment (the per-session lock already prevents cross-turn corruption; the
+residual is leaked server-side work on barge-in); auto-fallback to the subprocess
+`HermesClient` on `start()` failure (intentionally NOT added — prefer fail-loud +
+`/health` `started:false` over silent degradation); a structured tool-name field
+(ACP title prefix ≠ tool id; display-only).
+
+#### Original plan (kept for reference)
 - **Scope:** new `backend/app/acp_client.py` — `HermesAcpServer` (lifespan-owned
   warm child + supervision) + `HermesAcpClient` satisfying the **existing
   `HermesClient` interface** (`is_available`, `describe`, `ask`, `ask_streaming`).

@@ -23,9 +23,21 @@ harnesses deferred by user). Recon workflow `wiphdg9to`; review workflow `wjv07u
   `agent-client-protocol==0.9.0` added to backend deps. **Not device-tested through the
   app; flag still OFF in prod — turn it on (HERMES_USE_ACP=1 in backend/.env + restart)
   to try it.**
-- **Next — Phase 2:** conversation↔ACP session model + voice prelude as session
-  system_prompt (cure verbose-on-resume); confirm History/replay works for ACP UUIDs.
-  Then Phase 3 (resilience: respawn/S2, server-cancel, timeout unification) → Phase 4 cutover.
+- **Phase 2 — DONE (correctness; shaping deferred by user):** session continuity
+  across warm-child restart + History/replay both ALREADY work for ACP UUIDs
+  (verified live: `get_session`→`_restore` rehydrates; `hermes sessions export
+  <uuid>` returns ACP sessions). Voice-prelude-as-system_prompt SKIPPED (turn-1
+  prelude shapes adequately; the hook if revisited is `AIAgent(ephemeral_system_prompt=…)`,
+  appended every turn by `conversation_loop.py`).
+- **Phase 3a — DONE (committed):** timeout unified (`HERMES_TIMEOUT_SECONDS` default
+  180→300, ≥ iOS client); warm-child crash-respawn (`_ensure_healthy` respawns a
+  dead child before a turn; sessions rehydrate from state.db) — live-verified by
+  SIGKILL-ing the child mid-session and confirming the next turn self-heals.
+- **Phase 3b — REMAINING (needs an iOS build):** narrow the iOS stream→single-shot
+  fallback to 404/405 + visible + no auto-retry of side-effectful turns; don't
+  downgrade a succeeded turn on an export/audit/TTS failure; no post-reply error
+  events; history-recovery anchored on position not text (the Saved./Done. dedup
+  bug). Then Phase 4 cutover (flip `HERMES_USE_ACP` default ON).
 
 ## Active Branch
 

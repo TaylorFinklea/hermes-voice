@@ -223,6 +223,7 @@ async def test_ask_returns_hermes_reply_from_injected_conn():
     client._observer = obs
     client._conn = FakeConn(obs, [_msg("Saved.")])
     client._started = True
+    client._proc = SimpleNamespace(returncode=None)
 
     reply = await client.ask("save this", session_id="s1")
     assert reply.text == "Saved."
@@ -235,6 +236,7 @@ async def test_ask_fully_drains_generator_so_no_queue_leaks():
     client._observer = obs
     client._conn = FakeConn(obs, [_msg("ok")])
     client._started = True
+    client._proc = SimpleNamespace(returncode=None)
 
     await client.ask("hi", session_id="s1")
     assert obs._queues == {}
@@ -246,17 +248,71 @@ async def test_ask_streaming_wraps_prompt_error_as_hermes_error():
     client._observer = obs
     client._conn = FakeConn(obs, [_msg("x")], raise_in_prompt=RuntimeError("boom"))
     client._started = True
+    client._proc = SimpleNamespace(returncode=None)
 
     with pytest.raises(HermesError):
         async for _ in client.ask_streaming("hi", session_id="s1"):
             pass
 
 
-async def test_ask_streaming_requires_started():
+def _fake_acp_spawn(state):
+    """A fake `acp.spawn_agent_process`: each spawn returns a fresh conn+proc
+    whose conn fires the registered observer inline during prompt()."""
+
+    def spawn(to_client, *args, observers=None, **kwargs):
+        obs = observers[0] if observers else None
+
+        class FakeProc:
+            returncode = None
+
+        proc = FakeProc()
+        state.setdefault("procs", []).append(proc)
+
+        class FakeReConn:
+            async def initialize(self, protocol_version):
+                return SimpleNamespace()
+
+            async def new_session(self, cwd):
+                return SimpleNamespace(session_id="sess")
+
+            async def prompt(self, prompt, session_id):
+                obs(_su_event(session_id, _msg("ok")))
+                return SimpleNamespace(stop_reason="end_turn")
+
+            async def cancel(self, session_id):
+                pass
+
+        conn = FakeReConn()
+
+        class FakeCM:
+            async def __aenter__(self):
+                state["spawns"] = state.get("spawns", 0) + 1
+                return conn, proc
+
+            async def __aexit__(self, *a):
+                state["exits"] = state.get("exits", 0) + 1
+
+        return FakeCM()
+
+    return spawn
+
+
+async def test_turn_respawns_a_dead_warm_child(monkeypatch):
+    state = {}
+    monkeypatch.setattr(acp_client.acp, "spawn_agent_process", _fake_acp_spawn(state))
+
     client = acp_client.HermesAcpClient(get_settings())
-    with pytest.raises(HermesError):
-        async for _ in client.ask_streaming("hi"):
-            pass
+    await client.start()
+    assert state["spawns"] == 1
+
+    assert (await client.ask("hi")).text == "ok"
+
+    state["procs"][-1].returncode = 1  # the warm child dies
+
+    assert (await client.ask("hi again")).text == "ok"  # next turn self-heals
+    assert state["spawns"] == 2  # respawned a fresh child
+
+    await client.aclose()
 
 
 # --- lifecycle: start / aclose / describe ------------------------------------

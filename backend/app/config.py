@@ -110,7 +110,9 @@ def get_settings() -> Settings:
         bonjour_enabled=_bool("HERMES_VOICE_BONJOUR", default=True),
         public_host=_env("HERMES_VOICE_PUBLIC_HOST"),
         hermes_bin=_env("HERMES_BIN", default="hermes"),
-        hermes_timeout=int(_env("HERMES_TIMEOUT_SECONDS", default="180")),
+        # Per-turn ceiling. Must be >= the iOS client's request timeout (300s)
+        # so the backend never kills a turn the phone is still waiting on.
+        hermes_timeout=int(_env("HERMES_TIMEOUT_SECONDS", default="300")),
         hermes_extra_args=tuple(extra),
         use_acp=_bool("HERMES_USE_ACP", default=False),
         default_harness=_env("HARNESS_DEFAULT", default="hermes"),

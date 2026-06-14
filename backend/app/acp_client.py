@@ -226,7 +226,7 @@ class HermesAcpClient:
         return shutil.which(self._settings.hermes_bin) is not None
 
     def describe(self) -> dict:
-        alive = self._proc is not None and self._proc.returncode is None
+        alive = self._child_alive()
         return {
             "bin": self._settings.hermes_bin,
             "available": self.is_available(),
@@ -236,33 +236,54 @@ class HermesAcpClient:
             "timeout_seconds": self._settings.hermes_timeout,
         }
 
+    def _child_alive(self) -> bool:
+        return self._started and self._proc is not None and self._proc.returncode is None
+
+    async def _spawn(self) -> None:
+        """Spawn a fresh `hermes acp` child + initialize it. Caller holds _lock."""
+        self._observer = _AcpStreamObserver()
+        self._cm = acp.spawn_agent_process(
+            lambda agent: _AcpClient(),
+            self._settings.hermes_bin,
+            "acp",
+            use_unstable_protocol=True,
+            # Inherit the child's stderr (→ backend log) instead of an undrained
+            # PIPE that would deadlock a long-lived child once full.
+            transport_kwargs={"stderr": None},
+            observers=[self._observer],
+        )
+        self._conn, self._proc = await self._cm.__aenter__()
+        try:
+            async with asyncio.timeout(self._settings.hermes_timeout):
+                await self._conn.initialize(protocol_version=acp.PROTOCOL_VERSION)
+        except BaseException:
+            # Tear down the partially-started child so a failed/slow init doesn't
+            # leak it for the process lifetime.
+            with contextlib.suppress(Exception):
+                await self._cm.__aexit__(None, None, None)
+            self._cm = self._conn = self._proc = self._observer = None
+            raise
+        self._started = True
+
     async def start(self) -> None:
         async with self._lock:
             if self._started:
                 return
-            self._observer = _AcpStreamObserver()
-            self._cm = acp.spawn_agent_process(
-                lambda agent: _AcpClient(),
-                self._settings.hermes_bin,
-                "acp",
-                use_unstable_protocol=True,
-                # Inherit the child's stderr (→ backend log) instead of an
-                # undrained PIPE that would deadlock a long-lived child once full.
-                transport_kwargs={"stderr": None},
-                observers=[self._observer],
-            )
-            self._conn, self._proc = await self._cm.__aenter__()
-            try:
-                async with asyncio.timeout(self._settings.hermes_timeout):
-                    await self._conn.initialize(protocol_version=acp.PROTOCOL_VERSION)
-            except BaseException:
-                # Tear down the partially-started child so a failed/slow init
-                # doesn't leak it for the process lifetime.
+            await self._spawn()
+
+    async def _ensure_healthy(self) -> None:
+        """Respawn the warm child if it died (or was never started). Sessions
+        rehydrate from state.db on the next prompt (server-side get_session), so
+        a respawn is transparent to an in-progress conversation."""
+        async with self._lock:
+            if self._child_alive():
+                return
+            if self._cm is not None:
                 with contextlib.suppress(Exception):
                     await self._cm.__aexit__(None, None, None)
-                self._cm = self._conn = self._proc = self._observer = None
-                raise
-            self._started = True
+            self._cm = self._conn = self._proc = self._observer = None
+            self._started = False
+            await self._spawn()
 
     async def aclose(self) -> None:
         async with self._lock:
@@ -293,12 +314,11 @@ class HermesAcpClient:
     async def ask_streaming(self, prompt: str, session_id: str | None = None) -> AsyncIterator:
         if not prompt.strip():
             raise HermesError("empty prompt")
-        if not self._started or self._conn is None:
-            raise HermesError("acp server not started")
         # Phase 1 parity with the subprocess path: shape only the first turn.
         # Phase 2 moves this onto the session system_prompt so resumes stay shaped.
         shaped = prompt if session_id else f"{_VOICE_PRELUDE}\n\n{prompt}"
         try:
+            await self._ensure_healthy()  # respawn a dead/never-started child
             async with self._turn_guard(session_id):
                 async with asyncio.timeout(self._settings.hermes_timeout):
                     async for ev in _drive_turn(

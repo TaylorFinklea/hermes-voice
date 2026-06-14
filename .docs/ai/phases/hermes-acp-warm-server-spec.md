@@ -245,6 +245,20 @@ residual is leaked server-side work on barge-in); auto-fallback to the subproces
   app, resume, confirm continuity + terse shaping + History/replay.
 
 ### Phase 3 — Resilience hardening (the gaps ACP doesn't auto-fix)
+
+**Phase 3a — DONE (2026-06-13):** item 1 (timeout unification — `HERMES_TIMEOUT_SECONDS`
+default 180→300, ≥ the iOS client) + spike **S2** (warm-child crash detection +
+respawn: `_ensure_healthy()` respawns a dead/never-started child before a turn;
+sessions rehydrate from `state.db` via the server's `get_session`→`_restore`).
+Live-verified by SIGKILL-ing the child mid-session — the next turn came up on a
+fresh child and the resumed session rehydrated. (Phase 1 already added the
+per-turn timeout that bounds a mid-turn death; respawn makes the *next* turn
+self-heal.) **Remaining Phase 3b (items 2-5, mostly iOS — needs a build):** narrow
+the iOS stream→single-shot fallback to 404/405 + visible + no auto-retry of
+side-effectful turns; never downgrade a succeeded turn on an auxiliary
+(export/audit/TTS) failure; no post-reply error events; history-recovery anchored
+on position/timestamp not global text-uniqueness (the `Saved.`/`Done.` dedup bug).
+
 - **Scope (each item independently testable):**
   1. **Timeout unification** — one source of truth; backend ceiling ≥ client (or
      iOS reads `/health.timeout_seconds`, already exposed); a **typed** timeout

@@ -41,8 +41,16 @@ harnesses deferred by user). Recon workflow `wiphdg9to`; review workflow `wjv07u
   the text path's post-reply guard); history-recovery anchors on position
   (`currentTurnHasAssistantReply`) not global text (fixes the Saved./Done. dedup).
   **Not in a TestFlight build yet.**
-- **Phase 4 — NEXT:** cutover — flip `HERMES_USE_ACP` default ON after on-device
-  validation; retire or keep the subprocess path as the explicit fallback; docs.
+- **DEPLOYED FOR VALIDATION (2026-06-13):** `HERMES_USE_ACP=1` set in `backend/.env`
+  + backend restarted → warm path is **LIVE in prod** (confirmed: `hermes acp` child
+  up, log shows clean `ACP client connected`/`Initialize protocol v1`/`startup
+  complete`, no fallback). **TestFlight build 23** cut with the Phase 3b iOS fixes
+  (processing). Subprocess fallback is one env-var away (remove the `.env` line +
+  restart). **Awaiting on-device test of build 23:** feel the ~1-2s warm turns,
+  multi-turn continuity, recovery.
+- **Phase 4 — NEXT (after device validation):** flip `HERMES_USE_ACP` default ON in
+  `config.py`; retire or keep the subprocess path as the explicit fallback; doc-prose
+  + memory update. Then the initiative is complete.
 
 ## Active Branch
 

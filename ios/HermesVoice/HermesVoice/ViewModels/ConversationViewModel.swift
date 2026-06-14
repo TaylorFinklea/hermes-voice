@@ -232,12 +232,24 @@ final class ConversationViewModel: ObservableObject {
                 VoiceRecorder.discard(url)
             } catch is CancellationError {
                 VoiceRecorder.discard(url)  // user interrupted; drop their audio
-            } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code != 0 {
-                // Streaming endpoint unavailable (older backend) → single-shot.
+            } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code == 404 || code == 405 {
+                // Streaming endpoint genuinely MISSING (older backend) — the turn
+                // never ran, so re-running it single-shot is safe. Any other status
+                // (502/503/422/401…) means the turn may have already executed; fall
+                // through to a loud failure rather than silently re-firing a write.
+                print("[HermesVoice] /api/audio/stream \(code) → single-shot fallback")
                 await self.sendAudioFallback(url: url, sessionId: currentSession, voiceId: voiceId, tts: ttsMode, harness: harnessId)
             } catch {
                 VoiceRecorder.discard(url)
-                if !Task.isCancelled { self.failTurn(error) }
+                if !Task.isCancelled {
+                    // Don't downgrade a turn whose reply already arrived (a late
+                    // transport drop after the assistant text) into an error.
+                    if self.currentTurnHasAssistantReply() {
+                        if self.state == .thinking || self.state == .sending { self.state = .idle }
+                    } else {
+                        self.failTurn(error)
+                    }
+                }
             }
         }
         currentTurn = task
@@ -276,7 +288,11 @@ final class ConversationViewModel: ObservableObject {
             )
         } catch is CancellationError {
             // user barged in; userPressedMic already moved us to recording
-        } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code != 0 {
+        } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code == 404 || code == 405 {
+            // Streaming endpoint missing (older backend) — turn never ran, so a
+            // single-shot retry is safe. Other statuses fall through to the
+            // recover-or-fail path below (never silently re-fire a maybe-run turn).
+            print("[HermesVoice] /api/text/stream \(code) → single-shot fallback")
             await sendTextFallback(trimmed, sessionId: sessionId, voiceId: voiceId, tts: tts, harness: harness)
         } catch {
             if !Task.isCancelled {
@@ -371,7 +387,14 @@ final class ConversationViewModel: ObservableObject {
                 }
                 if state != .speaking { state = .idle }
             case .failed(let detail):
-                state = .error(detail)
+                // Don't paint a turn red if its reply already arrived — a server
+                // error AFTER the assistant text is a downstream (TTS/audit)
+                // failure, not a failed turn.
+                if sawAssistant {
+                    if state == .thinking || state == .sending { state = .idle }
+                } else {
+                    state = .error(detail)
+                }
                 return
             case .turn(let id):
                 currentTurnId = id.isEmpty ? nil : id
@@ -406,10 +429,10 @@ final class ConversationViewModel: ObservableObject {
     /// final `assistant` event. Pull the just-finished turn from History so the
     /// user sees the answer in the live pane instead of only after opening
     /// History.
-    /// Returns true only when a NEW assistant reply was surfaced. A dedup hit
-    /// (the fetched text already present) means we did NOT surface this turn's
-    /// reply — it's a coincidental duplicate from an earlier turn — so we report
-    /// false and let the caller show the real error instead of silently idling.
+    /// Returns true only when a reply was surfaced. Skips (returns false) only if
+    /// THIS turn already shows an assistant reply — anchored on position, not
+    /// global text equality, so identical short confirmations ("Done."/"Saved.")
+    /// across turns still recover instead of being mistaken for duplicates.
     private func recoverMissingAssistantFromHistory(
         sessionId: String?,
         turnUserText: String?
@@ -424,7 +447,10 @@ final class ConversationViewModel: ObservableObject {
             ) else {
                 return false
             }
-            guard !messages.contains(where: { $0.role == .assistant && $0.text == assistantText }) else {
+            // Anchor on POSITION, not global text: only skip if THIS turn already
+            // surfaced a reply. Identical short confirmations ("Done." / "Saved.")
+            // across turns are legitimate and must still recover.
+            guard !currentTurnHasAssistantReply() else {
                 return false
             }
             messages.append(Message(role: .assistant, text: assistantText))

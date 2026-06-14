@@ -33,11 +33,16 @@ harnesses deferred by user). Recon workflow `wiphdg9to`; review workflow `wjv07u
   180→300, ≥ iOS client); warm-child crash-respawn (`_ensure_healthy` respawns a
   dead child before a turn; sessions rehydrate from state.db) — live-verified by
   SIGKILL-ing the child mid-session and confirming the next turn self-heals.
-- **Phase 3b — REMAINING (needs an iOS build):** narrow the iOS stream→single-shot
-  fallback to 404/405 + visible + no auto-retry of side-effectful turns; don't
-  downgrade a succeeded turn on an export/audit/TTS failure; no post-reply error
-  events; history-recovery anchored on position not text (the Saved./Done. dedup
-  bug). Then Phase 4 cutover (flip `HERMES_USE_ACP` default ON).
+- **Phase 3b — DONE in code (committed; iOS BUILD SUCCEEDED; device-test pending):**
+  `ConversationViewModel.swift` — stream→single-shot fallback narrowed to 404/405
+  only (+ log; missing endpoint = turn never ran, so retry is safe; other statuses
+  fail loud, no silent re-fire of a maybe-run write); a server `error` after the
+  reply no longer errors the turn (`.failed` checks `sawAssistant`; audio path got
+  the text path's post-reply guard); history-recovery anchors on position
+  (`currentTurnHasAssistantReply`) not global text (fixes the Saved./Done. dedup).
+  **Not in a TestFlight build yet.**
+- **Phase 4 — NEXT:** cutover — flip `HERMES_USE_ACP` default ON after on-device
+  validation; retire or keep the subprocess path as the explicit fallback; docs.
 
 ## Active Branch
 

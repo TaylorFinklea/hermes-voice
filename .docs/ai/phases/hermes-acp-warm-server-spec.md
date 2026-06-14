@@ -253,11 +253,18 @@ sessions rehydrate from `state.db` via the server's `get_session`→`_restore`).
 Live-verified by SIGKILL-ing the child mid-session — the next turn came up on a
 fresh child and the resumed session rehydrated. (Phase 1 already added the
 per-turn timeout that bounds a mid-turn death; respawn makes the *next* turn
-self-heal.) **Remaining Phase 3b (items 2-5, mostly iOS — needs a build):** narrow
-the iOS stream→single-shot fallback to 404/405 + visible + no auto-retry of
-side-effectful turns; never downgrade a succeeded turn on an auxiliary
-(export/audit/TTS) failure; no post-reply error events; history-recovery anchored
-on position/timestamp not global text-uniqueness (the `Saved.`/`Done.` dedup bug).
+self-heal.) **Phase 3b — DONE in code (2026-06-13; iOS BUILD SUCCEEDED; device-test
+pending):** narrowed the iOS stream→single-shot fallback to 404/405 only (a missing
+endpoint = the turn never ran, so a single-shot retry is safe; any other status
+falls through to a loud failure instead of silently re-firing a maybe-executed
+write) + a log on fallback; a server `error` event arriving AFTER the assistant
+reply no longer paints the turn red (consumeTurn `.failed` checks `sawAssistant`;
+the audio path's transport-drop catch gained the same `currentTurnHasAssistantReply`
+guard the text path had); history-recovery now anchors on POSITION
+(`currentTurnHasAssistantReply`) not global text equality, so identical
+`Saved.`/`Done.` confirmations across turns still recover. All in
+`ConversationViewModel.swift`. **Next: Phase 4 cutover** (flip `HERMES_USE_ACP`
+default on after on-device validation).
 
 - **Scope (each item independently testable):**
   1. **Timeout unification** — one source of truth; backend ceiling ≥ client (or

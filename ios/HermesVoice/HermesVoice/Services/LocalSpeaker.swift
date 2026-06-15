@@ -1,133 +1,106 @@
 import Foundation
 import AVFoundation
-import FluidAudio
 
-/// On-device text-to-speech via Kokoro (Neural Engine) through FluidAudio —
-/// the reply is spoken on the phone, so there's no ElevenLabs network leg.
-/// Mirrors `LocalTranscriber`: download/cache the model set once, keep a warm
-/// `KokoroAneManager`, and synthesize on demand.
+/// On-device text-to-speech via Apple's `AVSpeechSynthesizer` — the reply is
+/// spoken on the phone, so there's no ElevenLabs network leg. Apple's synthesizer
+/// ships with the OS (no model download) and runs its own mature text normalizer,
+/// so numbers, dates, currency, and homographs are verbalized correctly — unlike
+/// the previous on-device engine (FluidAudio/Kokoro), whose context-free per-word
+/// G2P mispronounced homographs ("is" → "eyes") and dropped digits ("72" → "x").
 ///
-/// Playback is **sentence-chunked**: we synthesize the next sentence while the
-/// current one plays, so the first words start within a beat even on a long
-/// reply. Kokoro runs faster-than-realtime on the ANE, so synthesis stays ahead
-/// of playback.
+/// We still run `makeSpeakable` first to strip markdown markers (AVSpeech would
+/// otherwise read "##" / asterisks / code fences aloud) — that keeps on-device
+/// and server TTS reading the same clean prose.
 ///
-/// `@MainActor` for the same reasons as `LocalTranscriber`: serial access to the
-/// player/continuation state and `@Published state` driving the Settings UI.
+/// `@MainActor` for serial access to the synthesizer/continuation state and so
+/// `@Published`-free `ObservableObject` conformance drives the Settings UI safely.
 @MainActor
 final class LocalSpeaker: ObservableObject {
     static let shared = LocalSpeaker()
 
-    enum ModelState: Equatable {
-        case notDownloaded
-        case downloading
-        case ready
-        case failed(String)
-    }
+    /// Apple's on-device voices ship with the OS, so the speaker is always ready
+    /// — no download step. Kept as a property because `ConversationModeController`
+    /// gates on-device playback on it.
+    var isReady: Bool { true }
 
-    @Published private(set) var state: ModelState = .notDownloaded
-
-    var isReady: Bool { state == .ready }
-
-    /// One curated voice per accent/gender. `af_heart` is Kokoro's default and
-    /// is guaranteed present; the others are standard Kokoro voices. If a
-    /// selected voice ever fails to synthesize we fall back to `af_heart`, so a
-    /// missing pack degrades gracefully rather than breaking a turn.
+    /// One curated voice per accent/gender. Ids are *logical* (`<lang>-<gender>`),
+    /// resolved at synth time to the best-quality installed `AVSpeechSynthesisVoice`
+    /// for that language + gender. Resolution degrades gracefully (gender → any
+    /// voice in the language → system default), so a device missing a particular
+    /// voice never breaks a turn.
     struct Voice: Identifiable, Hashable {
-        let id: String      // Kokoro voice name, e.g. "af_heart"
+        let id: String      // logical id, e.g. "en-US-female"
         let label: String
     }
-    static let defaultVoice = "af_heart"
-    static let voices: [Voice] = [
-        Voice(id: "af_heart", label: "Heart · US ♀"),
-        Voice(id: "am_michael", label: "Michael · US ♂"),
-        Voice(id: "bf_emma", label: "Emma · UK ♀"),
-        Voice(id: "bm_george", label: "George · UK ♂"),
+    nonisolated static let defaultVoice = "en-US-female"
+    nonisolated static let voices: [Voice] = [
+        Voice(id: "en-US-female", label: "US ♀"),
+        Voice(id: "en-US-male", label: "US ♂"),
+        Voice(id: "en-GB-female", label: "UK ♀"),
+        Voice(id: "en-GB-male", label: "UK ♂"),
     ]
 
-    private var manager: KokoroAneManager?
-    private var loadTask: Task<KokoroAneManager, Error>?
+    /// Legacy Kokoro voice ids (stored in older installs as `local:af_heart` etc.)
+    /// mapped to their logical AVSpeech equivalent, so a saved selection keeps its
+    /// intended accent/gender after the engine swap.
+    private static let legacyVoiceMap: [String: String] = [
+        "af_heart": "en-US-female",
+        "am_michael": "en-US-male",
+        "bf_emma": "en-GB-female",
+        "bm_george": "en-GB-male",
+    ]
+
+    private var synthesizer: AVSpeechSynthesizer?
+    private var speechDelegate: SpeechDelegate?
 
     private var speakTask: Task<Void, Never>?
-    private var currentPlayer: AVAudioPlayer?
-    private var playContinuation: CheckedContinuation<Void, Error>?
-    private var finishDelegate: PlayerFinishDelegate?
+    private var speakContinuation: CheckedContinuation<Void, Error>?
+    /// The utterance the active continuation is waiting on. The delegate resolves
+    /// the continuation only for this exact utterance — `stopSpeaking(.immediate)`
+    /// fires `didCancel` asynchronously, and disowning the utterance here prevents
+    /// a stale cancel from tearing down the *next* turn's continuation.
+    private var currentUtterance: AVSpeechUtterance?
 
     private init() {
-        if UserDefaults.standard.bool(forKey: Self.downloadedKey) {
-            state = .ready
-        }
-        finishDelegate = PlayerFinishDelegate { [weak self] in self?.finishPlay() }
+        speechDelegate = SpeechDelegate(
+            onFinish: { [weak self] u in self?.resolveSpeak(u, error: nil) },
+            onCancel: { [weak self] u in self?.resolveSpeak(u, error: CancellationError()) }
+        )
     }
 
-    // MARK: - Model lifecycle
-
-    func prepare() async {
-        if case .downloading = state { return }
-        state = .downloading
-        do {
-            _ = try await ensureManager()
-            UserDefaults.standard.set(true, forKey: Self.downloadedKey)
-            state = .ready
-        } catch {
-            state = .failed(error.localizedDescription)
-        }
-    }
-
-    /// Warm the model in the background if it's already downloaded, so the first
-    /// spoken reply doesn't pay the load cost. No-op otherwise.
+    /// Pre-instantiate the synthesizer so the first spoken reply doesn't pay the
+    /// allocation cost. Named for its historical caller; AVSpeech needs no model
+    /// download, so this just warms the object.
     func warmUpIfDownloaded() {
-        guard isReady, manager == nil, loadTask == nil else { return }
-        Task { [weak self] in _ = try? await self?.ensureManager() }
+        _ = ensureSynthesizer()
     }
 
     // MARK: - Speaking
 
-    /// Speak `text` on-device, sentence by sentence. Cancellable via `stop()`
-    /// (barge-in). Returns when playback finishes or is cancelled. Failures are
-    /// swallowed — the reply text is already on screen.
+    /// Speak `text` on-device. Cancellable via `stop()` (barge-in). Returns when
+    /// playback finishes or is cancelled. Failures are swallowed — the reply text
+    /// is already on screen.
     func speak(_ text: String, voice: String) async {
         stop()
-        // Strip markdown/code so on-device TTS (the tts=none path, where the
-        // backend never sees the text) doesn't read "##", asterisks, or code
-        // fences aloud. Mirror of backend app/speakable.py make_speakable;
+        // Strip markdown/code so on-device TTS doesn't read "##", asterisks, or
+        // code fences aloud. Mirror of backend app/speakable.py make_speakable;
         // shared corpus: backend/tests/fixtures/speakable_cases.json.
-        let sentences = Self.splitIntoSentences(Self.makeSpeakable(text))
-        guard !sentences.isEmpty else { return }
+        let cleaned = Self.makeSpeakable(text)
+        guard !cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let resolvedVoice = Self.resolveVoice(voice)
 
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             AudioSessionCoordinator.shared.acquire(.playback)
             defer { AudioSessionCoordinator.shared.release() }
             do {
-                let manager = try await self.ensureManager()
-                var useVoice = voice
-                // Prefetch the next sentence while the current one plays.
-                var nextSynth = self.synth(manager, sentences[0], voice: useVoice)
-                for i in sentences.indices {
-                    var wav: Data
-                    do {
-                        wav = try await nextSynth.value
-                    } catch is CancellationError {
-                        throw CancellationError()
-                    } catch {
-                        // Selected voice failed (e.g. not in the pack) — fall
-                        // back to the default and retry this sentence once.
-                        guard useVoice != Self.defaultVoice else { throw error }
-                        useVoice = Self.defaultVoice
-                        wav = try await self.synth(manager, sentences[i], voice: useVoice).value
-                    }
-                    try Task.checkCancellation()
-                    if i + 1 < sentences.count {
-                        nextSynth = self.synth(manager, sentences[i + 1], voice: useVoice)
-                    }
-                    try await self.play(wav)
-                    try Task.checkCancellation()
-                }
+                try await self.speakUtterance(cleaned, voice: resolvedVoice)
             } catch is CancellationError {
                 // barge-in / stop — expected
             } catch {
-                // synthesis or playback failed; nothing to play
+                // Reply text is already on screen, so this is non-fatal — but
+                // leave a breadcrumb so a "went silent" report has a trail.
+                print("[HermesVoice] LocalSpeaker: speech synthesis failed: \(error)")
             }
         }
         speakTask = task
@@ -138,103 +111,96 @@ final class LocalSpeaker: ObservableObject {
     func stop() {
         speakTask?.cancel()
         speakTask = nil
-        currentPlayer?.stop()
-        currentPlayer = nil
-        if let cont = playContinuation {
-            playContinuation = nil
+        // Disown before stopping so the resulting didCancel is ignored.
+        currentUtterance = nil
+        synthesizer?.stopSpeaking(at: .immediate)
+        if let cont = speakContinuation {
+            speakContinuation = nil
             cont.resume(throwing: CancellationError())
         }
     }
 
     // MARK: - Helpers
 
-    private func synth(_ manager: KokoroAneManager, _ text: String, voice: String) -> Task<Data, Error> {
-        Task { try await manager.synthesize(text: text, voice: voice, speed: 1.0) }
+    private func ensureSynthesizer() -> AVSpeechSynthesizer {
+        if let synthesizer { return synthesizer }
+        let s = AVSpeechSynthesizer()
+        s.delegate = speechDelegate
+        synthesizer = s
+        return s
     }
 
-    /// Play one WAV blob and resume when it finishes. `stop()` resumes the
-    /// continuation with `CancellationError`. Resolution is single-owner: both
-    /// `finishPlay()` and `stop()` read-and-nil `playContinuation`, and both run
-    /// on the main actor, so exactly one resumes it.
-    private func play(_ wav: Data) async throws {
-        let player = try AVAudioPlayer(data: wav)
-        player.delegate = finishDelegate
+    /// Speak one utterance and resume when the synthesizer reports finish/cancel.
+    /// Resolution is single-owner: both `resolveSpeak(...)` and `stop()` read-and-nil
+    /// `speakContinuation` on the main actor, so exactly one resumes it.
+    private func speakUtterance(_ text: String, voice: AVSpeechSynthesisVoice?) async throws {
+        let synth = ensureSynthesizer()
+        let utterance = AVSpeechUtterance(string: text)
+        if let voice { utterance.voice = voice }
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             if Task.isCancelled {
                 cont.resume(throwing: CancellationError())
                 return
             }
-            currentPlayer = player
-            playContinuation = cont
-            if !player.play() {
-                playContinuation = nil
-                cont.resume(throwing: SpeakerError.playbackFailed)
+            speakContinuation = cont
+            currentUtterance = utterance
+            synth.speak(utterance)
+        }
+    }
+
+    /// Resolve the active continuation for `utterance` (finish → success, cancel →
+    /// CancellationError). Ignores callbacks for a disowned/superseded utterance.
+    private func resolveSpeak(_ utterance: AVSpeechUtterance, error: Error?) {
+        guard utterance === currentUtterance else { return }
+        currentUtterance = nil
+        guard let cont = speakContinuation else { return }
+        speakContinuation = nil
+        if let error { cont.resume(throwing: error) } else { cont.resume() }
+    }
+
+    /// Map a stored voice id (logical `<lang>-<gender>` or a legacy Kokoro id) to
+    /// the best-quality installed voice. Never crashes — degrades to a
+    /// language-only match, then the system default.
+    static func resolveVoice(_ id: String) -> AVSpeechSynthesisVoice? {
+        let logical = legacyVoiceMap[id] ?? id
+        let (language, gender) = parseLogical(logical)
+        let installed = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == language }
+        func best(_ voices: [AVSpeechSynthesisVoice]) -> AVSpeechSynthesisVoice? {
+            voices.max(by: { $0.quality.rawValue < $1.quality.rawValue })
+        }
+        if let gender {
+            // Prefer an exact gender match, then an untagged (.unspecified) voice
+            // — which may well be the requested gender — before settling for the
+            // other gender. Many system voices report .unspecified, so filtering
+            // strictly on gender would silently downgrade e.g. "US ♂" to female.
+            if let match = best(installed.filter { $0.gender == gender }) { return match }
+            if let match = best(installed.filter { $0.gender == .unspecified }) { return match }
+            if let match = best(installed) {
+                print("[HermesVoice] LocalSpeaker: no \(gender == .male ? "male" : "female") "
+                    + "\(language) voice installed; using \(match.name)")
+                return match
             }
+        } else if let match = best(installed) {
+            return match
         }
+        return AVSpeechSynthesisVoice(language: language)
+            ?? AVSpeechSynthesisVoice(language: "en-US")
     }
 
-    private func finishPlay() {
-        currentPlayer = nil
-        guard let cont = playContinuation else { return }
-        playContinuation = nil
-        cont.resume()
+    /// Split a logical id like "en-US-female" into ("en-US", .female). A non-logical
+    /// id (no recognizable gender suffix) yields (id, nil) — language-only resolution.
+    private static func parseLogical(_ logical: String) -> (String, AVSpeechSynthesisVoiceGender?) {
+        let parts = logical.split(separator: "-").map(String.init)
+        guard parts.count >= 3 else { return (logical, nil) }
+        let language = parts[0] + "-" + parts[1]
+        let gender: AVSpeechSynthesisVoiceGender?
+        switch parts[2].lowercased() {
+        case "female": gender = .female
+        case "male": gender = .male
+        default: gender = nil
+        }
+        return (language, gender)
     }
-
-    private func ensureManager() async throws -> KokoroAneManager {
-        if let manager { return manager }
-        if let loadTask { return try await loadTask.value }
-        let task = Task { () throws -> KokoroAneManager in
-            let m = KokoroAneManager(variant: .english, defaultVoice: Self.defaultVoice)
-            try await m.initialize()
-            return m
-        }
-        loadTask = task
-        do {
-            let m = try await task.value
-            manager = m
-            loadTask = nil
-            return m
-        } catch {
-            loadTask = nil
-            throw error
-        }
-    }
-
-    /// Pragmatic sentence splitter: break on `.?!`/newline, but only when the
-    /// chunk is long enough that we're not fragmenting on "e.g." / "1.". The
-    /// trailing remainder is its own chunk. Tunable; good enough for v1.
-    static func splitIntoSentences(_ text: String) -> [String] {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return [] }
-        var sentences: [String] = []
-        var current = ""
-        var sinceBreak = 0
-        for ch in trimmed {
-            current.append(ch)
-            sinceBreak += 1
-            if ch == "." || ch == "!" || ch == "?" || ch == "\n" {
-                if sinceBreak >= 12 {
-                    let s = current.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !s.isEmpty { sentences.append(s) }
-                    current = ""
-                    sinceBreak = 0
-                }
-            }
-        }
-        let tail = current.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !tail.isEmpty {
-            if tail.count < 12, let last = sentences.popLast() {
-                sentences.append(last + " " + tail)   // merge a tiny trailing fragment
-            } else {
-                sentences.append(tail)
-            }
-        }
-        return sentences
-    }
-
-    enum SpeakerError: Error { case playbackFailed }
-
-    private static let downloadedKey = "hv.kokoroDownloaded"
 
     // MARK: - Speakable text (markdown -> spoken prose)
 
@@ -327,14 +293,19 @@ final class LocalSpeaker: ObservableObject {
     }
 }
 
-/// Bridges `AVAudioPlayer`'s delegate callback onto the main actor.
-private final class PlayerFinishDelegate: NSObject, AVAudioPlayerDelegate {
-    private let onFinish: @MainActor () -> Void
-    init(onFinish: @escaping @MainActor () -> Void) { self.onFinish = onFinish }
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        Task { @MainActor in onFinish() }
+/// Bridges `AVSpeechSynthesizer`'s delegate callbacks onto the main actor.
+private final class SpeechDelegate: NSObject, AVSpeechSynthesizerDelegate {
+    private let onFinish: @MainActor (AVSpeechUtterance) -> Void
+    private let onCancel: @MainActor (AVSpeechUtterance) -> Void
+    init(onFinish: @escaping @MainActor (AVSpeechUtterance) -> Void,
+         onCancel: @escaping @MainActor (AVSpeechUtterance) -> Void) {
+        self.onFinish = onFinish
+        self.onCancel = onCancel
     }
-    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        Task { @MainActor in onFinish() }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in onFinish(utterance) }
+    }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in onCancel(utterance) }
     }
 }

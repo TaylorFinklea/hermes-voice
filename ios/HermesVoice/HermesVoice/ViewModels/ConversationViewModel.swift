@@ -143,7 +143,7 @@ final class ConversationViewModel: ObservableObject {
             return  // already recording; ignore press, gesture handles release
         case .speaking:
             player.stop()
-            LocalSpeaker.shared.stop()   // also cut on-device Kokoro playback
+            LocalSpeaker.shared.stop()   // also cut on-device TTS playback
             // Brief yield so the audio session deactivates before we
             // re-activate it for recording. Without this, .playAndRecord
             // can sometimes inherit dirty state from the prior .playback session.

@@ -50,7 +50,7 @@ final class ConversationModeController: ObservableObject {
             return
         }
         guard LocalSpeaker.shared.isReady else {
-            errorMessage = "Pick an on-device (Kokoro) voice in Settings first — hands-free needs it to reply."
+            errorMessage = "Pick an on-device voice in Settings first — hands-free needs it to reply."
             return
         }
         loopTask = Task { @MainActor [weak self] in

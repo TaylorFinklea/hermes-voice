@@ -178,9 +178,9 @@ struct SettingsView: View {
                 ForEach(voices) { v in
                     Text(v.name).tag(v.voiceId)
                 }
-                // On-device Kokoro voices appear once the model is downloaded
-                // (see the ON-DEVICE VOICE section). Tagged `local:` so the turn
-                // speaks the reply on-device instead of via the server.
+                // On-device Apple voices (always available, no download). Tagged
+                // `local:` so the turn speaks the reply on-device instead of via
+                // the server.
                 if speaker.isReady {
                     ForEach(LocalSpeaker.voices) { v in
                         Text("On-device · \(v.label)").tag("local:\(v.id)")
@@ -311,49 +311,11 @@ struct SettingsView: View {
     @ViewBuilder
     private var onDeviceVoiceSection: some View {
         Section {
-            switch speaker.state {
-            case .notDownloaded:
-                Button {
-                    Task { await speaker.prepare() }
-                } label: {
-                    HStack {
-                        Text("Download Kokoro voice")
-                            .font(HVFont.body)
-                            .foregroundStyle(HVColor.amber)
-                        Spacer()
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundStyle(HVColor.amber)
-                    }
-                }
-                .listRowBackground(HVColor.amberGlow.opacity(0.5))
-            case .downloading:
-                HStack(spacing: 8) {
-                    ProgressView().tint(HVColor.amber)
-                    Text("Downloading Kokoro…")
-                        .font(HVFont.body)
-                        .foregroundStyle(HVColor.cream)
-                }
-                .listRowBackground(HVColor.creamSurface)
-            case .ready:
-                HVKVRow(label: "Voice model", value: "Kokoro · ready", accent: HVColor.amber)
-            case .failed(let msg):
-                Text(msg)
-                    .font(HVFont.captionTiny)
-                    .foregroundStyle(HVColor.bronze)
-                    .listRowBackground(HVColor.creamSurface)
-                Button {
-                    Task { await speaker.prepare() }
-                } label: {
-                    Text("Retry download")
-                        .font(HVFont.body)
-                        .foregroundStyle(HVColor.amber)
-                }
-                .listRowBackground(HVColor.amberGlow.opacity(0.5))
-            }
+            HVKVRow(label: "Voice engine", value: "Apple · on-device", accent: HVColor.amber)
         } header: {
-            sectionHeader("ON-DEVICE VOICE (KOKORO)")
+            sectionHeader("ON-DEVICE VOICE")
         } footer: {
-            Text("Speak replies on this iPhone with Kokoro — no cloud round-trip. Download once, then pick an \"On-device\" voice above. Server (ElevenLabs) voices keep working.")
+            Text("Speak replies on this iPhone with Apple's built-in voices — no cloud round-trip, no download. Pick an \"On-device\" voice above. Server (ElevenLabs) voices keep working.")
                 .font(HVFont.captionTiny)
                 .foregroundStyle(HVColor.creamDim)
         }

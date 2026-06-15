@@ -2,6 +2,29 @@
 
 > Updated at the end of every work session. Read this first.
 
+## On-device TTS: Kokoro → Apple AVSpeech (DONE in code, 2026-06-15; build + device-test pending)
+
+Live testing (build 23) surfaced 3 on-device TTS bugs — **all traced to FluidAudio's
+on-device Kokoro, NOT the backend** (3-agent diagnosis, workflow `w33f0zdoe`): (1) voice
+picker always spoke default female (only `af_heart.bin` ships in FluidAudio's English ANE
+repo; `am_michael`/`bf_emma`/`bm_george` 404 → throw → `LocalSpeaker` silently fell back to
+`af_heart`); (2) "is"→"eyes" (context-free per-word BART G2P, no lexicon hook); (3) numbers
+dropped/"x" (FluidAudio's number normalizer is SSML-only, never wired into the Kokoro path).
+Backend ruled out: `make_speakable` only strips markdown + on-device path sends `tts=none`.
+
+**Fix (user chose "swap to Apple AVSpeech"):** rewrote `LocalSpeaker` from FluidAudio/Kokoro
+to Apple `AVSpeechSynthesizer` — Apple's normalizer handles numbers/dates/homographs, always
+on-device, offline, real selectable voices. Same public API; `makeSpeakable` kept; logical
+voice ids (`en-US`/`en-GB` × male/female) with legacy `local:af_heart` migration; gender-
+preference resolver (exact → `.unspecified` → other + breadcrumb). FluidAudio stays for
+STT/VAD. **iOS BUILD SUCCEEDED**; adversarially reviewed (barge-in continuation race handled
+via utterance-identity guard; silent gender-downgrade caught + fixed). Files: `LocalSpeaker.swift`
+(rewrite), `SettingsView.swift` (removed Kokoro download UI → always-ready row), `AppSettings.swift`
++ `ConversationModeController.swift` + `ConversationViewModel.swift` (Kokoro→Apple wording).
+Decision: `decisions.md [2026-06-15]`. **PENDING (user):** cut a TestFlight build + device-test
+(confirm voice selection is honored, numbers/homographs spoken correctly). Follow-up: surface in
+Settings when a requested gender isn't installed on the device (logs a breadcrumb only today).
+
 ## Hermes rock-solid — ACP warm-server migration (IN PROGRESS, 2026-06-13)
 
 **Initiative:** make Hermes trustworthy end-to-end (user directive). Root cause

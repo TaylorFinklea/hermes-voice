@@ -104,6 +104,9 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: HermesVoice/HermesVoice.entitlements
+    scheme:
+      testTargets:
+        - HermesVoiceTests
 
   HermesVoiceWatch:
     type: application
@@ -155,3 +158,22 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: NO
         SUPPORTS_MACCATALYST: NO
+
+  # Unit tests for pure logic in the app target (e.g. LocalSpeaker.makeSpeakable
+  # ↔ backend make_speakable parity). Hosted by the app; run on a simulator via
+  # `xcodebuild test -scheme HermesVoice`.
+  HermesVoiceTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: HermesVoiceTests
+      # Swift↔Python make_speakable parity corpus, referenced IN PLACE so the
+      # iOS test and backend/tests/test_speakable.py share one source of truth.
+      - path: ../../backend/tests/fixtures/speakable_cases.json
+        buildPhase: resources
+    dependencies:
+      - target: HermesVoice
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.finklea.harnessvoice.tests
+        GENERATE_INFOPLIST_FILE: YES

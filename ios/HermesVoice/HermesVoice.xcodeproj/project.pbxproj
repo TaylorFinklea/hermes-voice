@@ -39,7 +39,9 @@
 		8B1D926D5BAB433FB8A570D1 /* Atoms.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2667D0C94428D99A956948D /* Atoms.swift */; };
 		8DFF9B2D9AF9974BAC9E1495 /* ActionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C333A49C789676D5541D80BA /* ActionCard.swift */; };
 		938A385F9328247E99D2D233 /* ConversationCaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A7B39A6513FE4F8FB7F9075 /* ConversationCaptureEngine.swift */; };
+		9FF708633319C9D0C1154C0E /* speakable_cases.json in Resources */ = {isa = PBXBuildFile; fileRef = 2CF70CBF526FBB0F1037F2C6 /* speakable_cases.json */; };
 		A52398B744D8E740D17644A7 /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F301EE0D51AE7E6149CB6028 /* AudioPlayer.swift */; };
+		A71DBDA4A21F72808F2166CA /* LocalSpeakerSpeakableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF1E71B02F9D2626B26AD3A /* LocalSpeakerSpeakableTests.swift */; };
 		B14807A172CDC8E0AFAF07F5 /* HermesActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53A4809563E9438638E7D768 /* HermesActivityAttributes.swift */; };
 		B17B7CC5AC2FF090F4EF022B /* 984d0d17-2cca-40ea-acac-65a7d1bf0a18.id in Resources */ = {isa = PBXBuildFile; fileRef = 23E1ADFC421B9DA7E9D8DD92 /* 984d0d17-2cca-40ea-acac-65a7d1bf0a18.id */; };
 		B1E6B7D652D5A5ACBCC744CD /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C4276ABED593A1B47F0F329 /* OnboardingView.swift */; };
@@ -63,6 +65,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		03F38D6A6AA2069F25337336 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2DF5568C59CCE513383951E0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2E166F697B9C5F298B486D93;
+			remoteInfo = HermesVoice;
+		};
 		2DDF7A67910968833D09F207 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 2DF5568C59CCE513383951E0 /* Project object */;
@@ -112,6 +121,7 @@
 		1C8442F3F4BB38C203C77F24 /* LocalSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSpeaker.swift; sourceTree = "<group>"; };
 		23E1ADFC421B9DA7E9D8DD92 /* 984d0d17-2cca-40ea-acac-65a7d1bf0a18.id */ = {isa = PBXFileReference; path = "984d0d17-2cca-40ea-acac-65a7d1bf0a18.id"; sourceTree = "<group>"; };
 		248F1323DED3121D4CA9EFC0 /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
+		2CF70CBF526FBB0F1037F2C6 /* speakable_cases.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = speakable_cases.json; sourceTree = "<group>"; };
 		2F5107EB40D7F7FFED269FED /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		33B966AD3C9F9B2FF70EA6E1 /* HeroPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroPane.swift; sourceTree = "<group>"; };
 		37EDE32364962A2156475E57 /* HermesVoiceWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesVoiceWidgetBundle.swift; sourceTree = "<group>"; };
@@ -128,7 +138,9 @@
 		715C6CEBF378666AD02ABB56 /* AudioSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionCoordinator.swift; sourceTree = "<group>"; };
 		7587FF7A3D13C302F4161182 /* SessionBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionBrowserView.swift; sourceTree = "<group>"; };
 		76D461D25CE61518A627C832 /* HermesVoice.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesVoice.entitlements; sourceTree = "<group>"; };
+		79377E4B3B75BF7D5083AEF7 /* HermesVoiceTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HermesVoiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7A7B39A6513FE4F8FB7F9075 /* ConversationCaptureEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationCaptureEngine.swift; sourceTree = "<group>"; };
+		7DF1E71B02F9D2626B26AD3A /* LocalSpeakerSpeakableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSpeakerSpeakableTests.swift; sourceTree = "<group>"; };
 		7F48F66BDE7FEFB5F8D93B14 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		80CE6099662D4FB382235DF9 /* WatchSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSession.swift; sourceTree = "<group>"; };
 		819511910350506C883E1FED /* ConversationModeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationModeController.swift; sourceTree = "<group>"; };
@@ -182,12 +194,28 @@
 			path = Shared;
 			sourceTree = "<group>";
 		};
+		21F0699A44D4ED6A7C1BBA47 /* tests */ = {
+			isa = PBXGroup;
+			children = (
+				6DD3DCEC3041103244010C89 /* fixtures */,
+			);
+			path = tests;
+			sourceTree = "<group>";
+		};
 		2E12C3593C1DAA742EB36AE5 /* harness-capture */ = {
 			isa = PBXGroup;
 			children = (
 				23E1ADFC421B9DA7E9D8DD92 /* 984d0d17-2cca-40ea-acac-65a7d1bf0a18.id */,
 			);
 			path = "harness-capture";
+			sourceTree = "<group>";
+		};
+		444BD3935D5BF0B915D337FC /* HermesVoiceTests */ = {
+			isa = PBXGroup;
+			children = (
+				7DF1E71B02F9D2626B26AD3A /* LocalSpeakerSpeakableTests.swift */,
+			);
+			path = HermesVoiceTests;
 			sourceTree = "<group>";
 		};
 		446CEC5BFCC5121341EE698E /* HermesVoiceWatch */ = {
@@ -220,6 +248,14 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		6DD3DCEC3041103244010C89 /* fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				2CF70CBF526FBB0F1037F2C6 /* speakable_cases.json */,
+			);
+			path = fixtures;
+			sourceTree = "<group>";
+		};
 		732C01736FAB37C03BF79769 /* HermesVoice */ = {
 			isa = PBXGroup;
 			children = (
@@ -242,7 +278,9 @@
 		7AF58582FB1B7BBE3D59E3BF = {
 			isa = PBXGroup;
 			children = (
+				C8A89290D81B5D73C85EB70C /* hermes-voice */,
 				732C01736FAB37C03BF79769 /* HermesVoice */,
+				444BD3935D5BF0B915D337FC /* HermesVoiceTests */,
 				446CEC5BFCC5121341EE698E /* HermesVoiceWatch */,
 				C0A3B3B1C236EC10FBDB7CF2 /* HermesVoiceWidget */,
 				B108727DF6859EF2A5AB803C /* Products */,
@@ -295,6 +333,7 @@
 			isa = PBXGroup;
 			children = (
 				D84A69132372FE451302742E /* HermesVoice.app */,
+				79377E4B3B75BF7D5083AEF7 /* HermesVoiceTests.xctest */,
 				F4E7E039FC5FC213E5C95D08 /* HermesVoiceWatch.app */,
 				0607EA95518EA19F6E5242C3 /* HermesVoiceWidget.appex */,
 			);
@@ -324,6 +363,15 @@
 			path = DesignSystem;
 			sourceTree = "<group>";
 		};
+		C8A89290D81B5D73C85EB70C /* hermes-voice */ = {
+			isa = PBXGroup;
+			children = (
+				F2B6D5260A9DF0E061330547 /* backend */,
+			);
+			name = "hermes-voice";
+			path = ../..;
+			sourceTree = "<group>";
+		};
 		CD285702EADE81F770DC5E71 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -340,6 +388,14 @@
 				80CE6099662D4FB382235DF9 /* WatchSession.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		F2B6D5260A9DF0E061330547 /* backend */ = {
+			isa = PBXGroup;
+			children = (
+				21F0699A44D4ED6A7C1BBA47 /* tests */,
+			);
+			path = backend;
 			sourceTree = "<group>";
 		};
 		FAE53A84BDE68F724D9AC1F8 /* Services */ = {
@@ -374,6 +430,25 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		03F292F084A0B81821A45B92 /* HermesVoiceTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 64C8CF5EF50EEE2DF03A920E /* Build configuration list for PBXNativeTarget "HermesVoiceTests" */;
+			buildPhases = (
+				69C074448D7E0379855812D0 /* Sources */,
+				1D1CCECF212EB9872FBA05DA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1089B5FA823B70F5504E9E88 /* PBXTargetDependency */,
+			);
+			name = HermesVoiceTests;
+			packageProductDependencies = (
+			);
+			productName = HermesVoiceTests;
+			productReference = 79377E4B3B75BF7D5083AEF7 /* HermesVoiceTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		2E166F697B9C5F298B486D93 /* HermesVoice */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 3BB43510622656E27BB21149 /* Build configuration list for PBXNativeTarget "HermesVoice" */;
@@ -442,6 +517,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					03F292F084A0B81821A45B92 = {
+						DevelopmentTeam = K7CBQW6MPG;
+						ProvisioningStyle = Automatic;
+					};
 					2E166F697B9C5F298B486D93 = {
 						DevelopmentTeam = K7CBQW6MPG;
 						ProvisioningStyle = Automatic;
@@ -474,6 +553,7 @@
 			projectRoot = "";
 			targets = (
 				2E166F697B9C5F298B486D93 /* HermesVoice */,
+				03F292F084A0B81821A45B92 /* HermesVoiceTests */,
 				7545063AD8CFD734B8BC352F /* HermesVoiceWatch */,
 				CF958F6E2CC9721C83E53529 /* HermesVoiceWidget */,
 			);
@@ -481,6 +561,14 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		1D1CCECF212EB9872FBA05DA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9FF708633319C9D0C1154C0E /* speakable_cases.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		80E3707CFEA3DB0046DCA7C3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -545,6 +633,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		69C074448D7E0379855812D0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A71DBDA4A21F72808F2166CA /* LocalSpeakerSpeakableTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8CA399E6A74196A798CFFD18 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -572,6 +668,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		1089B5FA823B70F5504E9E88 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2E166F697B9C5F298B486D93 /* HermesVoice */;
+			targetProxy = 03F38D6A6AA2069F25337336 /* PBXContainerItemProxy */;
+		};
 		96A03DB7E4B7FFADC4D0BD52 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 7545063AD8CFD734B8BC352F /* HermesVoiceWatch */;
@@ -618,6 +719,23 @@
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		3FBBAB445954A596B5ABC8AC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.finklea.harnessvoice.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HermesVoice.app/HermesVoice";
 			};
 			name = Release;
 		};
@@ -814,6 +932,23 @@
 			};
 			name = Release;
 		};
+		F79CC1DD1D3ABA162E3EF9AD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.finklea.harnessvoice.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HermesVoice.app/HermesVoice";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -822,6 +957,15 @@
 			buildConfigurations = (
 				77D875EDC4656B19E8F98CDD /* Debug */,
 				1316FDD7BB19FC0CCDD31AD1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		64C8CF5EF50EEE2DF03A920E /* Build configuration list for PBXNativeTarget "HermesVoiceTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F79CC1DD1D3ABA162E3EF9AD /* Debug */,
+				3FBBAB445954A596B5ABC8AC /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

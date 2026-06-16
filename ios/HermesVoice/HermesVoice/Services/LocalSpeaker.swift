@@ -202,6 +202,28 @@ final class LocalSpeaker: ObservableObject {
         return (language, gender)
     }
 
+    /// A user-facing note for Settings when the selected on-device voice's
+    /// requested gender isn't installed for its accent and resolution will fall
+    /// to the opposite gender. Returns nil when the gender is honored, when an
+    /// untagged (.unspecified) voice could serve it, or when no gender was
+    /// requested — so it fires only on a confirmed opposite-gender downgrade.
+    static func unavailableGenderNote(for id: String) -> String? {
+        let logical = legacyVoiceMap[id] ?? id
+        let (language, gender) = parseLogical(logical)
+        guard let gender else { return nil }
+        let installed = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == language }
+        if installed.contains(where: { $0.gender == gender }) { return nil }
+        if installed.contains(where: { $0.gender == .unspecified }) { return nil }
+        guard installed.contains(where: { $0.gender != gender }) else { return nil }
+        let requested = voices.first(where: { $0.id == logical })?.label ?? logical
+        let siblingId = logical.replacingOccurrences(
+            of: gender == .male ? "-male" : "-female",
+            with: gender == .male ? "-female" : "-male")
+        let usingClause = voices.first(where: { $0.id == siblingId }).map { " — using \($0.label)" } ?? ""
+        return "\(requested) isn't installed on this device\(usingClause). "
+            + "Add it in iOS Settings › Accessibility › Spoken Content › Voices."
+    }
+
     // MARK: - Speakable text (markdown -> spoken prose)
 
     /// Spoken in place of a fenced code block. Mirrors `CODE_PLACEHOLDER` in

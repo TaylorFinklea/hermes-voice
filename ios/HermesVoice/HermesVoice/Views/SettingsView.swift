@@ -312,6 +312,13 @@ struct SettingsView: View {
     private var onDeviceVoiceSection: some View {
         Section {
             HVKVRow(label: "Voice engine", value: "Apple · on-device", accent: HVColor.amber)
+            if settings.isLocalVoiceSelected,
+               let note = LocalSpeaker.unavailableGenderNote(for: settings.localVoiceName) {
+                Text(note)
+                    .font(HVFont.captionTiny)
+                    .foregroundStyle(HVColor.bronze)
+                    .listRowBackground(HVColor.creamSurface)
+            }
         } header: {
             sectionHeader("ON-DEVICE VOICE")
         } footer: {

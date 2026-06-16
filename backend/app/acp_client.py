@@ -156,7 +156,7 @@ def _process_update(update: dict, reply_parts: list[str], tools_by_id: dict, ord
 
 
 async def _drive_turn(
-    conn, observer: _AcpStreamObserver, *, session_id, text, cwd
+    conn, observer: _AcpStreamObserver, *, session_id, text, cwd, voice_system_prompt=None
 ) -> AsyncGenerator[StreamTool | StreamReply, None]:
     """Run one turn against a warm ACP connection, yielding StreamTool events
     live and a final authoritative StreamReply. Mirrors HermesClient.ask_streaming's
@@ -172,7 +172,14 @@ async def _drive_turn(
     tools_by_id: dict[str, ToolCallSummary] = {}
     order: list[str] = []
 
-    prompt_task = asyncio.ensure_future(conn.prompt(prompt=_text_blocks(text), session_id=sid))
+    # The voice system prompt rides as ACP `_meta` (the acp router flattens
+    # `_meta` into the agent's prompt kwargs), so Hermes applies it as a per-turn
+    # ephemeral system prompt — shaping EVERY turn including resumes, without
+    # writing the instruction into the stored transcript.
+    prompt_meta = {"voice_system_prompt": voice_system_prompt} if voice_system_prompt else {}
+    prompt_task = asyncio.ensure_future(
+        conn.prompt(prompt=_text_blocks(text), session_id=sid, **prompt_meta)
+    )
     try:
         while True:
             getter = asyncio.ensure_future(queue.get())
@@ -320,9 +327,6 @@ class HermesAcpClient:
     async def ask_streaming(self, prompt: str, session_id: str | None = None) -> AsyncIterator:
         if not prompt.strip():
             raise HermesError("empty prompt")
-        # Phase 1 parity with the subprocess path: shape only the first turn.
-        # Phase 2 moves this onto the session system_prompt so resumes stay shaped.
-        shaped = prompt if session_id else f"{_VOICE_PRELUDE}\n\n{prompt}"
         try:
             await self._ensure_healthy()  # respawn a dead/never-started child
             async with self._turn_guard(session_id):
@@ -330,13 +334,16 @@ class HermesAcpClient:
                     # aclosing() so _drive_turn's finally (which sends
                     # session/cancel to the warm child) runs promptly when the
                     # client abandons the turn, not whenever the GC gets to it.
+                    # The voice prelude rides as ACP `_meta` (see _drive_turn), so
+                    # it shapes EVERY turn — incl. resumes — not just the first.
                     async with contextlib.aclosing(
                         _drive_turn(
                             self._conn,
                             self._observer,
                             session_id=session_id,
-                            text=shaped,
+                            text=prompt,
                             cwd=self._cwd(),
+                            voice_system_prompt=_VOICE_PRELUDE,
                         )
                     ) as turn:
                         async for ev in turn:

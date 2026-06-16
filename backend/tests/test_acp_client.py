@@ -16,7 +16,7 @@ import pytest
 
 from app import acp_client
 from app.config import get_settings
-from app.hermes import HermesError, StreamReply, StreamTool
+from app.hermes import _VOICE_PRELUDE, HermesError, StreamReply, StreamTool
 from app.session_audit import ToolCallSummary
 
 # --- ACP wire-shaped fake events (raw dicts, camelCase aliases) --------------
@@ -57,12 +57,14 @@ class FakeConn:
         self._raise = raise_in_prompt
         self.new_session_calls = 0
         self.cancels: list[str] = []
+        self.prompt_kwargs: dict = {}
 
     async def new_session(self, cwd):
         self.new_session_calls += 1
         return SimpleNamespace(session_id=self._new_session_id)
 
-    async def prompt(self, prompt, session_id):
+    async def prompt(self, prompt, session_id, **kwargs):
+        self.prompt_kwargs = kwargs
         for ev in self._events:
             self._observer(_su_event(session_id, ev))  # inline, before the response
         if self._raise is not None:
@@ -283,6 +285,22 @@ async def test_ask_streaming_wraps_prompt_error_as_hermes_error():
             pass
 
 
+async def test_ask_streaming_sends_voice_prelude_as_meta_every_turn():
+    # The voice prelude rides as ACP _meta on EVERY turn (incl. resumes), not
+    # prepended to the user text — so Hermes shapes spoken output every turn
+    # without the instruction landing in the stored transcript.
+    client = acp_client.HermesAcpClient(get_settings())
+    obs = acp_client._AcpStreamObserver()
+    client._observer = obs
+    conn = FakeConn(obs, [_msg("ok")])
+    client._conn = conn
+    client._started = True
+    client._proc = SimpleNamespace(returncode=None)
+
+    await client.ask("hi", session_id="resumed-sid")  # a RESUME turn
+    assert conn.prompt_kwargs == {"voice_system_prompt": _VOICE_PRELUDE}
+
+
 def _fake_acp_spawn(state):
     """A fake `acp.spawn_agent_process`: each spawn returns a fresh conn+proc
     whose conn fires the registered observer inline during prompt()."""
@@ -303,7 +321,7 @@ def _fake_acp_spawn(state):
             async def new_session(self, cwd):
                 return SimpleNamespace(session_id="sess")
 
-            async def prompt(self, prompt, session_id):
+            async def prompt(self, prompt, session_id, **kwargs):
                 obs(_su_event(session_id, _msg("ok")))
                 return SimpleNamespace(stop_reason="end_turn")
 

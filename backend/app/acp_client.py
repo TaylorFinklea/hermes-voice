@@ -26,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import shutil
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
 
 import acp
@@ -157,7 +157,7 @@ def _process_update(update: dict, reply_parts: list[str], tools_by_id: dict, ord
 
 async def _drive_turn(
     conn, observer: _AcpStreamObserver, *, session_id, text, cwd
-) -> AsyncIterator:
+) -> AsyncGenerator[StreamTool | StreamReply, None]:
     """Run one turn against a warm ACP connection, yielding StreamTool events
     live and a final authoritative StreamReply. Mirrors HermesClient.ask_streaming's
     contract. Because the observer enqueues every notification inline before the
@@ -200,6 +200,12 @@ async def _drive_turn(
     finally:
         observer.unregister(sid, queue)
         if not prompt_task.done():
+            # Turn abandoned (client barge-in/disconnect) before the prompt
+            # resolved: tell the warm child to stop generating, then cancel the
+            # local wait. Without session/cancel the child keeps generating in
+            # the background, tying up the single warm turn for the next one.
+            with contextlib.suppress(Exception):
+                await conn.cancel(session_id=sid)
             prompt_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await prompt_task
@@ -321,14 +327,20 @@ class HermesAcpClient:
             await self._ensure_healthy()  # respawn a dead/never-started child
             async with self._turn_guard(session_id):
                 async with asyncio.timeout(self._settings.hermes_timeout):
-                    async for ev in _drive_turn(
-                        self._conn,
-                        self._observer,
-                        session_id=session_id,
-                        text=shaped,
-                        cwd=self._cwd(),
-                    ):
-                        yield ev
+                    # aclosing() so _drive_turn's finally (which sends
+                    # session/cancel to the warm child) runs promptly when the
+                    # client abandons the turn, not whenever the GC gets to it.
+                    async with contextlib.aclosing(
+                        _drive_turn(
+                            self._conn,
+                            self._observer,
+                            session_id=session_id,
+                            text=shaped,
+                            cwd=self._cwd(),
+                        )
+                    ) as turn:
+                        async for ev in turn:
+                            yield ev
         except HermesError:
             raise
         except TimeoutError as e:

@@ -9,6 +9,7 @@ timeout/lifecycle, auto-approve) is the real code.
 """
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -193,6 +194,33 @@ async def test_drive_turn_propagates_prompt_error():
     conn = FakeConn(obs, [_msg("partial")], raise_in_prompt=RuntimeError("boom"))
     with pytest.raises(RuntimeError):
         await _drive(conn, obs, "s1")
+
+
+async def test_drive_turn_cancels_child_when_abandoned_mid_turn():
+    # A turn abandoned before the prompt resolves (barge-in / client disconnect)
+    # must send session/cancel so the warm child stops generating instead of
+    # running on in the background and tying up the next turn.
+    obs = acp_client._AcpStreamObserver()
+
+    class HangingConn:
+        def __init__(self) -> None:
+            self.cancels: list[str] = []
+
+        async def prompt(self, prompt, session_id):
+            obs(_su_event(session_id, _tool("read_file: /x", "tc-1")))
+            await asyncio.Event().wait()  # never resolves: turn stays mid-flight
+
+        async def cancel(self, session_id):
+            self.cancels.append(session_id)
+
+    conn = HangingConn()
+    agen = acp_client._drive_turn(conn, obs, session_id="s1", text="hi", cwd="/tmp")
+    first = await agen.__anext__()  # the live StreamTool, mid-turn
+    assert isinstance(first, StreamTool)
+    await agen.aclose()             # abandon the turn before completion
+
+    assert conn.cancels == ["s1"]   # child told to stop generating
+    assert "s1" not in obs._queues  # observer queue still cleaned up
 
 
 # --- _AcpClient (permission callback) ----------------------------------------

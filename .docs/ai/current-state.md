@@ -25,7 +25,7 @@ Decision: `decisions.md [2026-06-15]`. **PENDING (user):** cut a TestFlight buil
 (confirm voice selection is honored, numbers/homographs spoken correctly). Follow-up: surface in
 Settings when a requested gender isn't installed on the device (logs a breadcrumb only today).
 
-## Hermes rock-solid — ACP warm-server migration (IN PROGRESS, 2026-06-13)
+## Hermes rock-solid — ACP warm-server migration (COMPLETE, 2026-06-15)
 
 **Initiative:** make Hermes trustworthy end-to-end (user directive). Root cause
 found + spike-verified: hermes-voice cold-starts the whole agent per turn
@@ -71,9 +71,14 @@ harnesses deferred by user). Recon workflow `wiphdg9to`; review workflow `wjv07u
   (processing). Subprocess fallback is one env-var away (remove the `.env` line +
   restart). **Awaiting on-device test of build 23:** feel the ~1-2s warm turns,
   multi-turn continuity, recovery.
-- **Phase 4 — NEXT (after device validation):** flip `HERMES_USE_ACP` default ON in
-  `config.py`; retire or keep the subprocess path as the explicit fallback; doc-prose
-  + memory update. Then the initiative is complete.
+- **Phase 4 — DONE (2026-06-15):** `HERMES_USE_ACP` now defaults ON in `config.py`
+  (both the field default and the `_bool` env default); subprocess `HermesClient`
+  KEPT as the documented fallback (`HERMES_USE_ACP=0` + backend restart reverts).
+  176 backend tests green. The running backend already used ACP via the `.env`
+  override, so no behavior change / restart was needed — the `backend/.env`
+  `HERMES_USE_ACP=1` line is now redundant (harmless; remove it whenever).
+  **On-device validated 2026-06-15 (warm child PID 66662 stable ~2 days; turns
+  fast + reliable). INITIATIVE COMPLETE.**
 
 ## Active Branch
 

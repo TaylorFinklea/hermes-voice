@@ -263,8 +263,9 @@ the audio path's transport-drop catch gained the same `currentTurnHasAssistantRe
 guard the text path had); history-recovery now anchors on POSITION
 (`currentTurnHasAssistantReply`) not global text equality, so identical
 `Saved.`/`Done.` confirmations across turns still recover. All in
-`ConversationViewModel.swift`. **Next: Phase 4 cutover** (flip `HERMES_USE_ACP`
-default on after on-device validation).
+`ConversationViewModel.swift`. **Phase 4 cutover — DONE (2026-06-15):**
+`HERMES_USE_ACP` now defaults ON (on-device validated; warm child stable ~2 days).
+Subprocess kept as the `HERMES_USE_ACP=0` fallback. **Initiative complete.**
 
 - **Scope (each item independently testable):**
   1. **Timeout unification** — one source of truth; backend ceiling ≥ client (or
@@ -294,7 +295,7 @@ default on after on-device validation).
 - **Verify:** pytest green (new resilience tests); iOS build green; on-device
   checklist for the UI-visible items.
 
-### Phase 4 — Cutover + cleanup
+### Phase 4 — Cutover + cleanup — DONE (2026-06-15)
 - **Scope:** flip `HERMES_USE_ACP` default on; retain the subprocess path as an
   explicit fallback (`HERMES_USE_ACP=0`) for ≥1 release, OR retire it once trusted.
   Update README/architecture + `backend/docs`, `.docs/ai/*`, and memory

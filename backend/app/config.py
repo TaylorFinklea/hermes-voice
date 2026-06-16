@@ -59,9 +59,10 @@ class Settings:
     hermes_timeout: int = 300
     hermes_extra_args: tuple[str, ...] = field(default_factory=tuple)
     # Drive a warm `hermes acp` server instead of cold-starting `hermes chat`
-    # per turn (rock-solid migration). Off by default until Phase 4 cutover;
-    # flip with HERMES_USE_ACP=1. The legacy subprocess path is the fallback.
-    use_acp: bool = False
+    # per turn (rock-solid migration). ON by default since the Phase 4 cutover
+    # (2026-06-15); set HERMES_USE_ACP=0 to revert to the legacy subprocess path,
+    # which is kept as the documented fallback.
+    use_acp: bool = True
 
     # Multi-harness: which agent backs a turn when the request doesn't name one,
     # and where/how the coding harnesses (claude/codex/opencode) run. Hermes
@@ -114,7 +115,7 @@ def get_settings() -> Settings:
         # so the backend never kills a turn the phone is still waiting on.
         hermes_timeout=int(_env("HERMES_TIMEOUT_SECONDS", default="300")),
         hermes_extra_args=tuple(extra),
-        use_acp=_bool("HERMES_USE_ACP", default=False),
+        use_acp=_bool("HERMES_USE_ACP", default=True),
         default_harness=_env("HARNESS_DEFAULT", default="hermes"),
         harness_workspace_dir=_env(
             "HARNESS_WORKSPACE_DIR",

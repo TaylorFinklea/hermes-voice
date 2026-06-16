@@ -140,6 +140,16 @@
 
 **Known follow-up**: surface a Settings note when a requested voice's gender isn't installed on the device (today it logs a breadcrumb + degrades silently). Swift↔backend `make_speakable` parity is still manual (no iOS test target).
 
+## [2026-06-15] ACP warm path is the default; subprocess kept as the HERMES_USE_ACP=0 fallback
+
+**Context**: The "make Hermes rock solid" migration (Phases 0–3b) shipped a warm `hermes acp` server behind `HERMES_USE_ACP` (default OFF), validated in prod via a `backend/.env` override for ~2 days (warm child PID 66662 stable) and on-device. Phase 4 was the cutover decision: make the warm path permanent, and either retire or keep the legacy per-turn subprocess `HermesClient`.
+
+**Decision**: Flip `HERMES_USE_ACP` to default ON (`config.py` field default + the `_bool` env default). KEEP the subprocess `HermesClient` path as an explicit, documented fallback — `HERMES_USE_ACP=0` + backend restart reverts to it. No code deleted.
+
+**Alternatives considered**: Delete the subprocess path entirely (smaller surface, but removes the escape hatch); leave the default OFF and rely on the `.env` override indefinitely (fragile — a fresh deploy without the `.env` line silently regresses to the 2m56s cold-start).
+
+**Rationale**: Default-ON makes the fast path the one you get without special configuration, so a clean redeploy can't silently regress. Keeping the subprocess path costs ~nothing (already written + tested) and preserves a one-env-var rollback if the warm server ever misbehaves — the reversible safety the "rock solid" goal wants. The running prod backend already used ACP via the override, so the flip was behavior-neutral (no restart needed); the now-redundant `.env` line is harmless. Completes the initiative.
+
 ## [2026-05-29] One `.sheet(item:)` per view, never stacked `.sheet(isPresented:)`
 
 **Context**: Adding the in-app transcript sheet to MainView (redesign W3) silently broke the History sheet — discovered only on device. MainView had three `.sheet(isPresented:)` modifiers stacked on one view (settings/history/transcript). SwiftUI lets a later sheet modifier shadow earlier ones on the same view, so History stopped presenting once transcript was added.

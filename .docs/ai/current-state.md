@@ -2,6 +2,31 @@
 
 > Updated at the end of every work session. Read this first.
 
+## Voice/TTS polish + rock-solid tails (DONE, 2026-06-15; on-device turn-test pending)
+
+Four follow-ups after the AVSpeech swap + Phase 4 cutover. All committed; backend RESTARTED-LIVE.
+- **TTS gender note (iOS, `9a978c1`):** Settings warns when the selected on-device voice's gender
+  isn't installed (fires only on a confirmed opposite-gender fall-through). iOS build green.
+- **Server-side ACP cancel (backend, `f5ab123`):** abandoned turns (barge-in/disconnect) send
+  `conn.cancel` (`session/cancel`) so the warm child stops generating; `ask_streaming` wraps
+  `_drive_turn` in `contextlib.aclosing` for prompt cleanup. ruff + 178 tests.
+- **iOS parity test target (`eda7120`):** new `HermesVoiceTests` runs the shared
+  `backend/tests/fixtures/speakable_cases.json` corpus through Swift `makeSpeakable` (referenced
+  IN PLACE → can't drift from `test_speakable.py`). `xcodebuild test -scheme HermesVoice
+  -destination 'platform=iOS Simulator,name=iPhone 16'` → TEST SUCCEEDED. project.yml + regenerated
+  `.xcodeproj` + shared scheme committed.
+- **Hermes voice-prelude every turn — CROSS-REPO (`5911c44` hermes-voice + `fda7e544e` hermes-agent):**
+  the prelude now rides as ACP `_meta` on every prompt instead of prepended only on turn 1.
+  hermes-voice `acp_client.py` sends `conn.prompt(..., voice_system_prompt=_VOICE_PRELUDE)`; the acp
+  router flattens `_meta` into the agent's prompt kwargs; `~/.hermes/hermes-agent`
+  `acp_adapter/server.py` sets `agent.ephemeral_system_prompt` per turn → shaped on resumes too,
+  never written to the transcript. hermes-agent is an EDITABLE install (no rebuild). Decision:
+  `decisions.md [2026-06-15]`. **Backend RESTARTED 2026-06-15:** `/health` ok, warm child respawned
+  (PID 3646), clean ACP init, no errors. **⚠ hermes-agent commit `fda7e544e` is on their local
+  `main`, NOT pushed** (only `acp_adapter/server.py` staged; pre-existing package.json/lock changes
+  left untouched) — user may want to PR it per their monorepo workflow. **PENDING:** on-device turn
+  test (confirm no regression + replies stay terse deep in a conversation).
+
 ## On-device TTS: Kokoro → Apple AVSpeech (DONE in code, 2026-06-15; build + device-test pending)
 
 Live testing (build 23) surfaced 3 on-device TTS bugs — **all traced to FluidAudio's

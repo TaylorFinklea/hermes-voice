@@ -1,6 +1,11 @@
 """Provider factory tests — no network, no audio decode."""
 from __future__ import annotations
 
+import asyncio
+
+import httpx
+
+from app._http import acquire_client
 from app.config import Settings
 from app.hermes import HermesClient
 from app.stt import make_stt
@@ -64,6 +69,55 @@ def test_make_tts_returns_mock_when_mock_mode():
     tts = make_tts(Settings(mock=True))
     assert tts is not None
     assert tts.name == "mock"
+
+
+def test_make_tts_threads_shared_client_into_provider():
+    client = httpx.AsyncClient()
+    try:
+        tts = make_tts(Settings(elevenlabs_key="x"), client)
+        assert tts is not None
+        assert tts._client is client
+    finally:
+        asyncio.run(client.aclose())
+
+
+def test_make_stt_threads_shared_client_into_provider():
+    client = httpx.AsyncClient()
+    try:
+        stt = make_stt(Settings(openai_key="x", groq_key=""), client)
+        assert stt is not None
+        assert stt._client is client
+    finally:
+        asyncio.run(client.aclose())
+
+
+def test_acquire_client_reuses_shared_instance_without_closing_it():
+    async def go():
+        shared = httpx.AsyncClient()
+        try:
+            async with acquire_client(shared, timeout=1.0) as client:
+                assert client is shared
+            # The shared client must outlive the `async with` — the lifespan owns
+            # its close, not the per-call helper.
+            assert not shared.is_closed
+        finally:
+            await shared.aclose()
+
+    asyncio.run(go())
+
+
+def test_acquire_client_opens_and_closes_ephemeral_when_none():
+    captured: dict[str, httpx.AsyncClient] = {}
+
+    async def go():
+        async with acquire_client(None, timeout=1.0) as client:
+            assert isinstance(client, httpx.AsyncClient)
+            captured["client"] = client
+            assert not client.is_closed
+        # The ephemeral fallback closes itself on exit (no leak).
+        assert captured["client"].is_closed
+
+    asyncio.run(go())
 
 
 def test_hermes_client_parse_handles_resume_notice():

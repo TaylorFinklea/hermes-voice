@@ -2,6 +2,13 @@
 
 > Updated at the end of every work session. Read this first.
 
+## Latency optimization — voice fast profile + shared HTTP client (2026-06-20)
+
+User: "responses super slow, focus on optimization." Systematic-debug of the live log traced all latency to the **agent loop**, NOT the hermes-voice transport: (1) agentic tool loop = 7–16 sequential model round-trips/turn (2–9s each); (2) one 60s `rg --files --sortr=modified` over `/Users/tfinklea` (ACP cwd = home dir) — already timeout-bounded, *shared* tool layer, left as-is; (3) post-turn self-improvement review (~45s, 2nd forked agent) tying up the warm child between turns.
+
+- **Voice fast profile — CROSS-REPO (hermes-agent `acp_adapter/server.py`; UNCOMMITTED on its local `main`).** Gated on the `voice_system_prompt` `_meta` the backend sends every turn: voice/ACP turns set `reasoning_config={'effort':'low'}` + `_skill_nudge_interval=0` + `_memory_nudge_interval=0` (skips bg review). Defaults captured once + restored for non-voice ACP turns (Zed) → terminal Hermes keeps full effort + self-improvement. Decision: `decisions.md [2026-06-20]`. **Backend RESTARTED 2026-06-20** (child PID 52995, clean ACP init, no errors). **PENDING user device test** — confirm faster TTFB + NO `💾 Self-improvement review` after a heavy turn (discriminator in `/tmp/hermes-voice.log`).
+- **Shared `httpx.AsyncClient` (hermes-voice, committed).** TTS/STT providers opened a fresh `httpx.AsyncClient` per call (new TLS handshake each synth/transcribe). New `app/_http.py acquire_client()` + optional `client` injected into all 6 providers (graceful per-call fallback for direct construction/tests); lifespan-managed client on `app.state.http_client`, closed on shutdown; threaded via `make_tts`/`make_stt`. Helps server-TTS (Watch/default) + cloud STT + connection churn; does NOT touch the on-device path (`tts=none`, on-device STT). **182 backend tests (+4), ruff clean on touched files.** Out-of-process schedules MCP (`mcp_schedules.py _client()`) left as-is (separate process, can't share `app.state`).
+
 ## Voice/TTS polish + rock-solid tails (DONE, 2026-06-15; on-device turn-test pending)
 
 Four follow-ups after the AVSpeech swap + Phase 4 cutover. All committed; backend RESTARTED-LIVE.

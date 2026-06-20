@@ -18,6 +18,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Protocol
 
+import httpx
+
 from ..config import Settings
 
 
@@ -54,7 +56,9 @@ class TTSProvider(Protocol):
         return "audio/mpeg"
 
 
-def make_tts(settings: Settings) -> TTSProvider | None:
+def make_tts(
+    settings: Settings, client: httpx.AsyncClient | None = None
+) -> TTSProvider | None:
     override = (settings.tts_provider_override or "").strip().lower()
 
     if settings.mock or override == "mock":
@@ -68,6 +72,7 @@ def make_tts(settings: Settings) -> TTSProvider | None:
                 api_key=settings.elevenlabs_key,
                 voice_id=settings.elevenlabs_voice_id,
                 model=settings.elevenlabs_model,
+                client=client,
             )
 
     if override == "openai" or (not override and settings.openai_key):
@@ -77,6 +82,7 @@ def make_tts(settings: Settings) -> TTSProvider | None:
                 api_key=settings.openai_key,
                 model=settings.openai_tts_model,
                 voice=settings.openai_tts_voice,
+                client=client,
             )
 
     if override in {"", "piper", "local", "local_piper"}:

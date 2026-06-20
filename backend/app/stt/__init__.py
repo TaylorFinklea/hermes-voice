@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+import httpx
+
 from ..config import Settings
 
 
@@ -30,7 +32,9 @@ class STTNotConfiguredError(RuntimeError):
     """No usable STT provider; /api/audio cannot proceed."""
 
 
-def make_stt(settings: Settings) -> STTProvider | None:
+def make_stt(
+    settings: Settings, client: httpx.AsyncClient | None = None
+) -> STTProvider | None:
     """Return the best available STT provider, or None.
 
     Returns None only if mock mode is off AND no provider can serve.
@@ -45,17 +49,17 @@ def make_stt(settings: Settings) -> STTProvider | None:
     if override == "openai" or (not override and settings.openai_key):
         if settings.openai_key:
             from .openai_stt import OpenAISTT
-            return OpenAISTT(settings.openai_key)
+            return OpenAISTT(settings.openai_key, client=client)
 
     if override == "groq" or (not override and settings.groq_key):
         if settings.groq_key:
             from .groq_stt import GroqSTT
-            return GroqSTT(settings.groq_key)
+            return GroqSTT(settings.groq_key, client=client)
 
     if override == "elevenlabs" or (not override and settings.elevenlabs_key):
         if settings.elevenlabs_key:
             from .elevenlabs_scribe import ElevenLabsScribeSTT
-            return ElevenLabsScribeSTT(settings.elevenlabs_key)
+            return ElevenLabsScribeSTT(settings.elevenlabs_key, client=client)
 
     if override in {"", "local", "local_whisper", "faster_whisper"}:
         try:

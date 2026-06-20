@@ -3,25 +3,34 @@ from __future__ import annotations
 
 import httpx
 
+from .._http import acquire_client
+
 
 class OpenAISTT:
     name = "openai_whisper"
 
-    def __init__(self, api_key: str, model: str = "whisper-1"):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "whisper-1",
+        client: httpx.AsyncClient | None = None,
+    ):
         self._key = api_key
         self._model = model
+        self._client = client
 
     def describe(self) -> dict:
         return {"name": self.name, "model": self._model}
 
     async def transcribe(self, audio_bytes: bytes, *, mime: str | None = None) -> str:
         filename, content_type = _guess_filename_and_type(mime)
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with acquire_client(self._client, timeout=60.0) as client:
             resp = await client.post(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {self._key}"},
                 data={"model": self._model, "response_format": "text"},
                 files={"file": (filename, audio_bytes, content_type)},
+                timeout=60.0,
             )
         resp.raise_for_status()
         # response_format=text returns plain text body

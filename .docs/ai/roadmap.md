@@ -97,7 +97,7 @@ From the adversarially-verified review (40 kept / 34 confirmed; harness-deck rep
 - [ ] Inject one `BackendClient` instead of ad-hoc `HermesVoiceAPI(...)` in ~8 sites.
 - [ ] Add an iOS test target (start with `pairedTurns`, decoders, VM transitions, **+ `LocalSpeaker.makeSpeakable` parity vs backend `make_speakable` using the shared fixture corpus `backend/tests/fixtures/speakable_cases.json`** — the Swift mirror is currently hand-matched only).
 - [ ] Migrate Hermes + Codex voice preludes to a per-invocation system prompt like Claude (done 2026-06-05): they still prepend a first-turn-only USER-text `_VOICE_PRELUDE`, so resumed turns get no shaping. The `make_speakable` sanitizer already protects their *spoken* output, but the model still emits verbose markdown on resume. Needs verifying whether the `hermes`/`codex` CLIs expose an append-system-prompt equivalent.
-- [ ] Long-lived per-provider `httpx.AsyncClient` (TLS reuse) for TTS/STT/MCP.
+- [x] Long-lived per-provider `httpx.AsyncClient` (TLS reuse) for TTS/STT — DONE (2026-06-20). `app/_http.py acquire_client()` + a lifespan-managed `app.state.http_client` injected into all 6 TTS/STT providers (graceful per-call fallback). The out-of-process schedules MCP (`mcp_schedules.py`) keeps its own per-call client (separate process, can't share `app.state`).
 - [ ] `Semaphore(2-3)` around `_fire_one`; text-only path flag for scheduled fires.
 - [ ] Typed tool-output schema (unblocks richer ActionCard variants).
 

@@ -168,3 +168,13 @@
 
 **Rationale**: One presenter per view is the reliable SwiftUI pattern; stacking `.sheet(isPresented:)` (or `.fullScreenCover`) on a single view is a known footgun. The enum also makes "one sheet at a time" explicit, and adding a sheet is one more `case` rather than another stacked modifier that can shadow the others. Lesson, like the nested-sheet env-object one: this class of bug is Release/runtime-only and won't show up in `xcodebuild` — it needs the app actually running.
 
+## [2026-06-20] Voice fast profile gated on the ACP `_meta` voice signal (not a global config)
+
+**Context**: User reported voice responses "super slow." Systematic-debug of the live backend log traced the latency entirely to the agent loop (not the hermes-voice transport): the agentic tool loop runs 7–16 sequential model round-trips/turn (2–9s each), and after tool-heavy turns a background "self-improvement review" forks a second agent (~45s, 3 more model calls) that ties up the single warm child right as the user speaks again. The high-leverage knobs (`reasoning_effort`, the review's nudge intervals) live in `~/.hermes/config.yaml` / hermes-agent — shared with the user's *terminal* Hermes.
+
+**Decision**: Make a voice-only "fast profile" in the hermes-agent ACP adapter (`acp_adapter/server.py` prompt handler), keyed on the `voice_system_prompt` `_meta` field the voice backend already sends every turn: set `reasoning_config={'effort':'low'}`, `_skill_nudge_interval=0`, `_memory_nudge_interval=0`. Capture the configured defaults once and restore them for any non-voice ACP turn (e.g. Zed). Terminal Hermes is a separate process and is untouched.
+
+**Alternatives considered**: (a) Global `reasoning_effort: medium→low` in config.yaml — one line, but drops the user's terminal Hermes to low effort too. (b) Raise the nudge thresholds globally. (c) Leave effort, only kill the review. The user explicitly chose the voice-only scoping + skip-review.
+
+**Rationale**: Voice is a latency-sensitive *spoken* interface, not a coding session — low effort + no between-turn self-improvement is the right trade *there* without degrading full-power terminal use. Gating on the existing `_meta` voice signal needs no new protocol field and no hermes-voice change. Reversible (delete the block). Separately flagged but deferred: a 60s `rg --files --sortr=modified` over `/Users/tfinklea` (the ACP session cwd is the home dir) — real latency landmine but already timeout-bounded and in the *shared* tool layer, so out of scope for a voice-only change.
+

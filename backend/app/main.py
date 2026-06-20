@@ -8,6 +8,7 @@ import secrets
 from contextlib import asynccontextmanager, suppress
 from typing import Annotated
 
+import httpx
 from fastapi import (
     Depends,
     FastAPI,
@@ -102,10 +103,15 @@ def create_app(
 
     if hermes is None:
         hermes = _make_hermes(settings, auto_mock)
+    # Long-lived HTTP client shared by the server-side TTS/STT providers so each
+    # synth/transcribe reuses a keep-alive connection instead of paying a fresh
+    # TLS handshake per call. Only real (non-mock) providers use it; mock mode
+    # and injected test providers leave it None. Closed in the lifespan finally.
+    http_client = None if auto_mock else httpx.AsyncClient(timeout=60.0)
     if stt is None:
-        stt = make_stt(settings)
+        stt = make_stt(settings, http_client)
     if tts is None:
-        tts = make_tts(settings)
+        tts = make_tts(settings, http_client)
     if store is None:
         store = AudioStore()
 
@@ -165,6 +171,12 @@ def create_app(
                     await app.state.hermes.aclose()
                 except Exception as e:
                     logger.warning("ACP shutdown error: %s", e)
+            # Close the shared TTS/STT HTTP client (no-op if never created).
+            if http_client is not None:
+                try:
+                    await http_client.aclose()
+                except Exception as e:
+                    logger.warning("http client shutdown error: %s", e)
 
     app = FastAPI(
         title="Hermes Voice Backend",
@@ -197,6 +209,7 @@ def create_app(
     app.state.stt = stt
     app.state.tts = tts
     app.state.store = store
+    app.state.http_client = http_client
     app.state.auto_mock = auto_mock
 
     _register_routes(app)

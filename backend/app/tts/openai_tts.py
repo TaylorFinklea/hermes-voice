@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import httpx
 
+from .._http import acquire_client
 from . import TTSResult
 
 
@@ -11,10 +12,17 @@ class OpenAITTS:
     stream_extension = ".mp3"
     stream_mime = "audio/mpeg"
 
-    def __init__(self, api_key: str, model: str = "tts-1", voice: str = "onyx"):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "tts-1",
+        voice: str = "onyx",
+        client: httpx.AsyncClient | None = None,
+    ):
         self._key = api_key
         self._model = model
         self._voice = voice
+        self._client = client
 
     def describe(self) -> dict:
         return {"name": self.name, "model": self._model, "voice": self._voice}
@@ -24,7 +32,7 @@ class OpenAITTS:
         yield result.audio
 
     async def synthesize(self, text: str, voice_id: str | None = None) -> TTSResult:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with acquire_client(self._client, timeout=60.0) as client:
             resp = await client.post(
                 "https://api.openai.com/v1/audio/speech",
                 headers={
@@ -37,6 +45,7 @@ class OpenAITTS:
                     "input": text,
                     "response_format": "mp3",
                 },
+                timeout=60.0,
             )
         resp.raise_for_status()
         return TTSResult(audio=resp.content, mime="audio/mpeg", extension=".mp3")

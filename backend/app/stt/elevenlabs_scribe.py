@@ -14,27 +14,35 @@ from __future__ import annotations
 
 import httpx
 
+from .._http import acquire_client
 from .openai_stt import _guess_filename_and_type
 
 
 class ElevenLabsScribeSTT:
     name = "elevenlabs_scribe"
 
-    def __init__(self, api_key: str, model: str = "scribe_v1"):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "scribe_v1",
+        client: httpx.AsyncClient | None = None,
+    ):
         self._key = api_key
         self._model = model
+        self._client = client
 
     def describe(self) -> dict:
         return {"name": self.name, "model": self._model}
 
     async def transcribe(self, audio_bytes: bytes, *, mime: str | None = None) -> str:
         filename, content_type = _guess_filename_and_type(mime)
-        async with httpx.AsyncClient(timeout=90.0) as client:
+        async with acquire_client(self._client, timeout=90.0) as client:
             resp = await client.post(
                 "https://api.elevenlabs.io/v1/speech-to-text",
                 headers={"xi-api-key": self._key},
                 data={"model_id": self._model},
                 files={"file": (filename, audio_bytes, content_type)},
+                timeout=90.0,
             )
         resp.raise_for_status()
         body = resp.json()

@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from .._http import acquire_client
 from . import TTSResult
 
 # ElevenLabs voice ids are short alphanumerics (e.g. "nPczCjzI2devNBz1zQrb").
@@ -33,10 +34,12 @@ class ElevenLabsTTS:
         api_key: str,
         voice_id: str,
         model: str = "eleven_turbo_v2_5",
+        client: httpx.AsyncClient | None = None,
     ):
         self._key = api_key
         self._voice = voice_id
         self._model = model
+        self._client = client
 
     def describe(self) -> dict:
         return {"name": self.name, "voice_id": self._voice, "model": self._model}
@@ -72,8 +75,10 @@ class ElevenLabsTTS:
     async def synthesize(self, text: str, voice_id: str | None = None) -> TTSResult:
         voice = self._resolve_voice(voice_id)
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}"
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, headers=self._headers(), json=self._body(text))
+        async with acquire_client(self._client, timeout=60.0) as client:
+            resp = await client.post(
+                url, headers=self._headers(), json=self._body(text), timeout=60.0
+            )
         resp.raise_for_status()
         return TTSResult(audio=resp.content, mime="audio/mpeg", extension=".mp3")
 
@@ -85,9 +90,9 @@ class ElevenLabsTTS:
         """
         voice = self._resolve_voice(voice_id)
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}/stream"
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with acquire_client(self._client, timeout=60.0) as client:
             async with client.stream(
-                "POST", url, headers=self._headers(), json=self._body(text)
+                "POST", url, headers=self._headers(), json=self._body(text), timeout=60.0
             ) as resp:
                 resp.raise_for_status()
                 async for chunk in resp.aiter_bytes():

@@ -137,15 +137,19 @@ mitigated to 300s in `a061863`). No native way to partial-load history —
   CODE_SIGNING_ALLOWED=NO` green.
 - **Tier hint**: Sonnet — multi-file but localized (one backend field + two iOS
   surfaces).
-- **Deferred follow-up (separate item, do NOT bundle):** execute the remedy
-  *from the app* — a "Compact this session" button. Lead with triggering
-  `/compact` in place (preserves continuity); fork-from-summary is the fallback
-  but **forks the session ID** (diverges from the terminal) and is lossy.
-  Gotcha to remember: a real model summary of a huge session is itself slow
-  (something must load the history to summarize it), so a free/instant version
-  seeds the new session with the raw last-K-messages tail + `ai-title`, not a
-  model summary. **Needs a spike**: whether `/compact` can be driven headlessly
-  (slash commands in `-p` mode are unverified).
+- [x] **Compact this session from the app — DONE (2026-06-20).** Spike RESOLVED:
+  an agent live-probed `claude 2.1.185` — `claude -p /compact --resume <id>
+  --output-format json` runs the slash command in print mode against the resumed
+  session and returns the SAME session_id (in-place, **no fork**), so the lossy
+  fork-from-summary fallback is unnecessary. Backend: `ClaudeAdapter.compact_session`
+  (one-shot subprocess, mirrors the non-warm `ask` path; "not enough messages" →
+  friendly `ok=False`, not an error) exposed at `POST /api/harnesses/{harness_id}/sessions/{session_id}/compact`
+  (sibling of list-sessions; 422 for non-claude harnesses). iOS: `HermesVoiceAPI.compactSession`
+  + a real **Compact** button in the SessionBrowserView "Large history" alert
+  (claude-only) behind a "Compacting…" overlay, reloads on success. 192 backend
+  tests (+6, subprocess mocked); iOS BUILD SUCCEEDED. **PENDING:** backend restart to
+  load the endpoint + a TestFlight build for the button, then on-device: attach a
+  large session → Compact → confirm same id resumes faster.
 
 ## Constraints
 

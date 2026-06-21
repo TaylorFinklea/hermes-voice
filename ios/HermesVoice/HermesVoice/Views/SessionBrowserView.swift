@@ -22,6 +22,11 @@ struct SessionBrowserView: View {
     /// Set when the user taps a large session — drives a confirm-with-remedy
     /// alert instead of attaching straight into a several-minute first reply.
     @State private var pendingHeavy: HermesVoiceAPI.HarnessSession?
+    /// True while an in-place /compact subprocess runs — it's slow on big
+    /// sessions (resumes + replays once), so we block the list behind a spinner.
+    @State private var compacting = false
+    /// Result message from the last compaction, shown in a follow-up alert.
+    @State private var compactMessage: String?
 
     var body: some View {
         List {
@@ -78,10 +83,69 @@ struct SessionBrowserView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .alert("Large history", isPresented: heavyAlert, presenting: pendingHeavy) { s in
+            if supportsCompaction {
+                Button("Compact") { compact(s) }
+            }
             Button("Attach anyway") { attach(s) }
             Button("Cancel", role: .cancel) {}
         } message: { s in
-            Text("This session has \(s.messageCount) messages, so the first reply may take a few minutes while it loads.\n\nTo speed up future resumes, run /compact in this session's terminal — it shrinks the history while keeping the same session.")
+            if supportsCompaction {
+                Text("This session has \(s.messageCount) messages, so the first reply may take a few minutes while it loads.\n\nCompact shrinks the history while keeping the same session, so future resumes are fast. It runs now and may take a minute on a large session.")
+            } else {
+                Text("This session has \(s.messageCount) messages, so the first reply may take a few minutes while it loads.\n\nTo speed up future resumes, run /compact in this session's terminal — it shrinks the history while keeping the same session.")
+            }
+        }
+        .alert("Compaction", isPresented: compactResultAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(compactMessage ?? "")
+        }
+        .overlay { if compacting { compactingOverlay } }
+    }
+
+    /// Only the Claude harness exposes in-place /compact; other harnesses get
+    /// the manual-remedy copy (and the backend would 422 the request anyway).
+    private var supportsCompaction: Bool { harnessId == "claude" }
+
+    private var compactingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.45).ignoresSafeArea()
+            VStack(spacing: 10) {
+                ProgressView().tint(HVColor.amber)
+                Text("Compacting…")
+                    .font(HVFont.body)
+                    .foregroundStyle(HVColor.cream)
+                Text("This can take a minute on a large session.")
+                    .font(HVFont.captionTiny)
+                    .foregroundStyle(HVColor.creamDim)
+            }
+            .padding(24)
+            .background(HVColor.creamSurface, in: RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    /// Bridges the optional `compactMessage` to the result alert's Bool binding.
+    private var compactResultAlert: Binding<Bool> {
+        Binding(get: { compactMessage != nil }, set: { if !$0 { compactMessage = nil } })
+    }
+
+    /// Run the in-place /compact, then reload the list so the (now smaller)
+    /// session reflects its reduced size. The session_id is preserved, so a
+    /// later attach resumes the compacted session.
+    private func compact(_ s: HermesVoiceAPI.HarnessSession) {
+        Task {
+            compacting = true
+            defer { compacting = false }
+            let api = HermesVoiceAPI(baseURL: settings.backendURL, authToken: settings.authToken)
+            do {
+                let result = try await api.compactSession(
+                    harnessId: harnessId, sessionId: s.sessionId
+                )
+                await load()
+                compactMessage = result.message
+            } catch {
+                compactMessage = "Couldn't compact this session (is the backend reachable?)."
+            }
         }
     }
 

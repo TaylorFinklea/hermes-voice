@@ -719,6 +719,40 @@ struct HermesVoiceAPI {
         }
     }
 
+    /// Result of an in-place `/compact` on a harness session. The same
+    /// session_id is returned (no fork), so a later attach resumes the now
+    /// smaller, faster-to-replay session. `ok` is false with a friendly
+    /// `message` when there was nothing to compact.
+    struct CompactResult: Decodable {
+        let ok: Bool
+        let message: String
+        let sessionId: String
+
+        enum CodingKeys: String, CodingKey {
+            case ok, message
+            case sessionId = "session_id"
+        }
+    }
+
+    /// Run the harness' in-place `/compact` against a session. Slow on big
+    /// sessions (it resumes and replays the transcript once). Only the Claude
+    /// harness supports it; the session_id is preserved.
+    func compactSession(harnessId: String, sessionId: String) async throws -> CompactResult {
+        let encoded = sessionId.addingPercentEncoding(
+            withAllowedCharacters: .urlPathAllowed
+        ) ?? sessionId
+        let url = try buildURL("/api/harnesses/\(harnessId)/sessions/\(encoded)/compact")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        let (data, response) = try await perform(req)
+        try Self.ensureOK(response, data: data)
+        do {
+            return try Self.decoder.decode(CompactResult.self, from: data)
+        } catch {
+            throw APIError.decode(error)
+        }
+    }
+
     // MARK: - Internals
 
     private static let decoder: JSONDecoder = JSONDecoder()

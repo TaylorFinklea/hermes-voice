@@ -235,6 +235,67 @@ async def test_due_schedule_invokes_hermes(temp_db: Path) -> None:
     assert updated.consecutive_fails == 0
 
 
+@pytest.mark.asyncio
+async def test_fire_skips_tts_synthesis(temp_db: Path) -> None:
+    """A scheduled fire never synthesizes audio — the push re-synthesizes on replay."""
+    fake_hermes = FakeHermes(reply="42 degrees and breezy")
+    fake_tts = FakeTTS()
+    client = build_client(hermes=fake_hermes, tts=fake_tts)
+    app = client.app
+
+    s = await schedules.create(cadence_seconds=60, prompt="weather", path=temp_db)
+    await schedules._fire_one(app, s)
+
+    # Hermes ran, but the TTS provider recorded zero synth calls.
+    assert fake_hermes.calls
+    assert fake_tts.calls == []
+
+
+@pytest.mark.asyncio
+async def test_semaphore_caps_concurrent_fires(temp_db: Path) -> None:
+    """No more than MAX_CONCURRENT_FIRES schedules reach Hermes at once."""
+    from app.schedules import MAX_CONCURRENT_FIRES
+
+    gate = asyncio.Event()
+    in_hermes = 0
+    max_seen = 0
+
+    class GatedHermes(FakeHermes):
+        async def ask(self, prompt, session_id=None):
+            nonlocal in_hermes, max_seen
+            in_hermes += 1
+            max_seen = max(max_seen, in_hermes)
+            await gate.wait()
+            in_hermes -= 1
+            return await super().ask(prompt, session_id=session_id)
+
+    client = build_client(hermes=GatedHermes(), tts=FakeTTS())
+    app = client.app
+
+    n = MAX_CONCURRENT_FIRES + 2
+    scheds = [
+        await schedules.create(cadence_seconds=60, prompt=f"p{i}", path=temp_db)
+        for i in range(n)
+    ]
+
+    fires = [asyncio.create_task(schedules._fire_one(app, s)) for s in scheds]
+
+    # Let the first wave reach (and block in) Hermes, then assert the cap held.
+    for _ in range(50):
+        await asyncio.sleep(0)
+        if in_hermes >= MAX_CONCURRENT_FIRES:
+            break
+    # Exactly MAX get through — proves both bounds: not more (the cap holds) and
+    # not fewer (the cap is reachable, so a regression to a too-small cap fails).
+    assert max_seen == MAX_CONCURRENT_FIRES
+    assert in_hermes == MAX_CONCURRENT_FIRES  # the rest are blocked on the sema
+
+    # Release the gate and let everything drain.
+    gate.set()
+    await asyncio.gather(*fires)
+    assert max_seen <= MAX_CONCURRENT_FIRES
+
+
 # ───────────────────── Devices (Phase B) ─────────────────────
 
 

@@ -50,6 +50,13 @@ TICK_SECONDS = 5
 _in_flight: set[str] = set()
 _fire_tasks: set[asyncio.Task] = set()
 
+# Upper bound on schedules firing at once. The _in_flight set dedups a single
+# schedule across ticks, but a burst of distinct due schedules would otherwise
+# spawn unbounded concurrent Hermes turns. Cap them so a backlog can't swamp
+# the backend.
+MAX_CONCURRENT_FIRES = 3
+_fire_sema = asyncio.Semaphore(MAX_CONCURRENT_FIRES)
+
 
 @dataclass
 class Schedule:
@@ -486,29 +493,35 @@ async def _fire_one(app: FastAPI, sched: Schedule) -> None:
 
     fired_at = time.time()
     try:
-        response = await _run_turn(app, user_text=sched.prompt, session_id=None)
-        await _mark_fired(sched.id, fired_at, success=True)
-        logger.info(
-            "schedule fired id=%s display=%r prompt=%r",
-            sched.id, sched.display_name, sched.prompt[:60],
-        )
-
-        # Push delivery — best-effort, never blocks the schedule from
-        # being marked fired. If APNs isn't configured this is a no-op.
-        try:
-            settings = app.state.settings
-            count = await send_push(
-                settings,
-                body=response.assistant_text,
-                schedule_id=sched.id,
-                session_id=response.session_id,
+        async with _fire_sema:
+            # Skip TTS synthesis: the scheduled turn's audio is never consumed
+            # here. The push auto-plays via /api/replay, which re-synthesizes
+            # from the stored assistant_text on demand.
+            response = await _run_turn(
+                app, user_text=sched.prompt, session_id=None, tts_mode="none",
             )
-            if count:
-                logger.info(
-                    "push delivered to %d device(s) for schedule=%s", count, sched.id
+            await _mark_fired(sched.id, fired_at, success=True)
+            logger.info(
+                "schedule fired id=%s display=%r prompt=%r",
+                sched.id, sched.display_name, sched.prompt[:60],
+            )
+
+            # Push delivery — best-effort, never blocks the schedule from
+            # being marked fired. If APNs isn't configured this is a no-op.
+            try:
+                settings = app.state.settings
+                count = await send_push(
+                    settings,
+                    body=response.assistant_text,
+                    schedule_id=sched.id,
+                    session_id=response.session_id,
                 )
-        except Exception as e:
-            logger.warning("push failed for schedule=%s: %s", sched.id, e)
+                if count:
+                    logger.info(
+                        "push delivered to %d device(s) for schedule=%s", count, sched.id
+                    )
+            except Exception as e:
+                logger.warning("push failed for schedule=%s: %s", sched.id, e)
     except Exception as e:
         # "Skip silently" per the spec — log but no push, no alert.
         logger.warning(

@@ -2,6 +2,13 @@
 
 > Updated at the end of every work session. Read this first.
 
+## Backlog burn (ultracode workflows, 2026-06-20)
+
+Triage workflow (`wllyeadau`, 8 parallel readers) assessed every open backlog item vs live code; burn workflow (`wgeycmki7`, implement→verify→adversarial-review) landed the two autoburnable ones.
+- **schedules concurrency + text-only fires (DONE, committed).** `backend/app/schedules.py`: `MAX_CONCURRENT_FIRES=3` semaphore caps concurrent `_fire_one`; fires pass `tts_mode="none"` (push re-synthesizes via `/api/replay`). +2 mutation-verified tests. 184 backend tests green.
+- **iOS test expansion (DONE, committed).** `HermesVoiceTests` +3 files (pairedTurns, answer parsers, decoders + `parseEvent` SSE; bumped `parseEvent` `private`→`internal static`). 40 tests, `xcodebuild test` green.
+- **Triage verdicts for the rest:** `compact-from-app` → **spike RESOLVED** (an agent live-probed `claude 2.1.185`: `-p /compact --resume` works AND preserves session_id, no fork) → wave-2 do-now. `backend-client-injection` → backlog premise wrong (18 sites/11 files, value struct, 3 config sources); Lead call = factory-on-config (`AppSettings.makeAPI()`); wave-2. `prelude-migration` → mostly superseded (Hermes `_meta` + Claude `--append-system-prompt` done); only Codex adapter first-turn prepend remains + needs CLI-override verification. `typed-tool-output` → defer (cross-repo: needs hermes-agent to emit structured `rawOutput`). `turn-pipeline` → defer (XL, needs Lead spec + DI seam; blocks deep VM tests). `launchd-plist-rebrand` → **user-run** (live `~/Library/LaunchAgents/`, agents never apply to live HOME).
+
 ## Latency optimization — voice fast profile + shared HTTP client (2026-06-20)
 
 User: "responses super slow, focus on optimization." Systematic-debug of the live log traced all latency to the **agent loop**, NOT the hermes-voice transport: (1) agentic tool loop = 7–16 sequential model round-trips/turn (2–9s each); (2) one 60s `rg --files --sortr=modified` over `/Users/tfinklea` (ACP cwd = home dir) — already timeout-bounded, *shared* tool layer, left as-is; (3) post-turn self-improvement review (~45s, 2nd forked agent) tying up the warm child between turns.

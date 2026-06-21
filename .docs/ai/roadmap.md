@@ -95,10 +95,10 @@ From the adversarially-verified review (40 kept / 34 confirmed; harness-deck rep
 **Architecture (needs design + prioritization):**
 - [ ] Extract a `TurnPipeline`/`HermesTurnService` from the `ConversationViewModel` god-object (and make it testable).
 - [ ] Inject one `BackendClient` instead of ad-hoc `HermesVoiceAPI(...)` in ~8 sites.
-- [ ] Add an iOS test target (start with `pairedTurns`, decoders, VM transitions, **+ `LocalSpeaker.makeSpeakable` parity vs backend `make_speakable` using the shared fixture corpus `backend/tests/fixtures/speakable_cases.json`** — the Swift mirror is currently hand-matched only).
+- [x] Add an iOS test target — DONE (2026-06-20). `HermesVoiceTests` now covers `makeSpeakable` parity (existing) + `pairedTurns(in:)` grouping, the static answer parsers (`parseYesNo`/`parseSelection`), JSON decoders (`TurnResponse`/`HistoryMessage`/`HistoryDetail`/`ToolCall`), and `HermesVoiceAPI.parseEvent` SSE decoding (visibility bumped `private`→`internal static`). 40 tests, `xcodebuild test` green. **Deferred:** deep `ConversationViewModel` state-machine tests — the VM hardwires singletons with no injection seam, so it needs the `TurnPipeline`/DI refactor (below) first.
 - [ ] Migrate Hermes + Codex voice preludes to a per-invocation system prompt like Claude (done 2026-06-05): they still prepend a first-turn-only USER-text `_VOICE_PRELUDE`, so resumed turns get no shaping. The `make_speakable` sanitizer already protects their *spoken* output, but the model still emits verbose markdown on resume. Needs verifying whether the `hermes`/`codex` CLIs expose an append-system-prompt equivalent.
 - [x] Long-lived per-provider `httpx.AsyncClient` (TLS reuse) for TTS/STT — DONE (2026-06-20). `app/_http.py acquire_client()` + a lifespan-managed `app.state.http_client` injected into all 6 TTS/STT providers (graceful per-call fallback). The out-of-process schedules MCP (`mcp_schedules.py`) keeps its own per-call client (separate process, can't share `app.state`).
-- [ ] `Semaphore(2-3)` around `_fire_one`; text-only path flag for scheduled fires.
+- [x] `Semaphore(2-3)` around `_fire_one`; text-only path for scheduled fires — DONE (2026-06-20). `schedules.py`: `MAX_CONCURRENT_FIRES=3` + `_fire_sema` caps concurrent fires; `_fire_one` passes `tts_mode="none"` so fires skip redundant TTS synth (the push re-synthesizes via `/api/replay`). +2 tests (zero-synth + concurrency cap, mutation-verified).
 - [ ] Typed tool-output schema (unblocks richer ActionCard variants).
 
 ### From on-device testing (2026-05-29)

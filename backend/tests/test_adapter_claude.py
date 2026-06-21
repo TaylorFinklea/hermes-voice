@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from app.adapters.claude import (
     StreamAccumulator,
+    _parse_compact,
     _parse_oneshot,
     parse_event,
 )
@@ -192,3 +193,36 @@ def test_parse_oneshot_extracts_result_and_session():
     reply = _parse_oneshot(line)
     assert reply.text == "hello"
     assert reply.session_id == "3fdf5fbc-e2d9-46a6-92b6-3be6ee39d8c5"
+
+
+def test_parse_compact_success_preserves_session_id():
+    # In-place compaction returns the SAME session_id and is_error=false.
+    line = (
+        '{"type":"result","subtype":"success","is_error":false,'
+        f'"result":"Compacted.","session_id":"{SESSION}"}}'
+    )
+    out = _parse_compact(line, SESSION)
+    assert out["ok"] is True
+    assert out["session_id"] == SESSION  # preserved, no fork
+    assert out["message"]
+
+
+def test_parse_compact_no_session_id_falls_back_to_input():
+    # If the result omits session_id, we fall back to the resumed id.
+    line = '{"type":"result","is_error":false,"result":"ok"}'
+    out = _parse_compact(line, SESSION)
+    assert out["ok"] is True
+    assert out["session_id"] == SESSION
+
+
+def test_parse_compact_not_enough_messages_is_friendly_not_error():
+    # The "not enough messages" case maps to a friendly ok=False message.
+    line = (
+        '{"type":"result","subtype":"error","is_error":true,'
+        '"result":"Error: not enough messages to compact",'
+        f'"session_id":"{SESSION}"}}'
+    )
+    out = _parse_compact(line, SESSION)
+    assert out["ok"] is False
+    assert "nothing to compact" in out["message"].lower()
+    assert out["session_id"] == SESSION

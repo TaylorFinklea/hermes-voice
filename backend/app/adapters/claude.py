@@ -424,6 +424,65 @@ class ClaudeAdapter:
         exclude = tuple(self._settings.claude_session_exclude)
         return await asyncio.to_thread(list_claude_sessions, limit, None, exclude)
 
+    async def compact_session(self, session_id: str) -> dict:
+        """Run `/compact` in-place against a resumed session.
+
+        `claude -p /compact --resume <id> --output-format json` executes the
+        slash command in print mode against the resumed session and returns the
+        SAME session_id (in-place compaction, no fork), so a later `--resume`
+        replays a smaller transcript. This is a one-shot subprocess — /compact
+        is a slash command with no SDK control subtype, so the warm-ACP / SDK
+        turn path doesn't apply; this mirrors the non-warm `ask` path.
+
+        Returns {ok, message, session_id}. The "not enough messages to compact"
+        case is surfaced as ok=False with a friendly message rather than raising.
+        """
+        if not session_id.strip():
+            raise HermesError("empty session_id")
+
+        cwd, _read_only = self._resolve_cwd(session_id)
+        args = [
+            self.bin,
+            "-p",
+            "/compact",
+            "--resume",
+            session_id,
+            "--output-format",
+            "json",
+        ]
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                cwd=cwd,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError as e:
+            raise HermesError(f"claude binary not found: {self.bin}") from e
+
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(
+                proc.communicate(), timeout=self._settings.hermes_timeout
+            )
+        except asyncio.TimeoutError as e:
+            proc.kill()
+            raise HermesError(
+                f"claude timed out after {self._settings.hermes_timeout}s"
+            ) from e
+
+        stdout = stdout_b.decode("utf-8", errors="replace")
+        stderr = stderr_b.decode("utf-8", errors="replace")
+
+        if proc.returncode != 0:
+            tail = (stderr or stdout).strip().splitlines()[-5:]
+            raise HermesError(
+                f"claude exited {proc.returncode}: " + " | ".join(tail)
+            )
+
+        return _parse_compact(stdout, session_id)
+
     async def ask(self, prompt: str, session_id: str | None = None) -> HermesReply:
         if not prompt.strip():
             raise HermesError("empty prompt")
@@ -522,6 +581,57 @@ class ClaudeAdapter:
         if not reply.text:
             raise HermesError("claude returned no assistant text")
         yield reply
+
+
+def _last_json_obj(stdout: str) -> dict | None:
+    """The last parseable JSON object in stdout (warnings may precede it)."""
+    for line in reversed(stdout.strip().splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            candidate = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(candidate, dict):
+            return candidate
+    return None
+
+
+def _parse_compact(stdout: str, session_id: str) -> dict:
+    """Parse the `/compact` one-shot `--output-format json` result.
+
+    On success returns {ok: True, message, session_id}. The "not enough
+    messages to compact" case is a friendly ok=False message rather than an
+    error. session_id is preserved (in-place compaction returns the same id).
+    """
+    raw = stdout.strip()
+    if not raw:
+        raise HermesError("claude returned no output")
+    obj = _last_json_obj(raw)
+    if obj is None:
+        raise HermesError("claude returned no parseable JSON result")
+
+    # In-place compaction returns the same session_id; fall back to the input.
+    out_sid = obj.get("session_id") or session_id
+    result_text = obj.get("result")
+    result_str = result_text if isinstance(result_text, str) else ""
+
+    if obj.get("is_error"):
+        low = result_str.lower()
+        if "not enough messages" in low or "nothing to compact" in low:
+            return {
+                "ok": False,
+                "message": "This session is already small — nothing to compact.",
+                "session_id": out_sid,
+            }
+        raise HermesError(f"claude reported an error: {result_str!r}")
+
+    return {
+        "ok": True,
+        "message": "Session compacted. Resuming it will now be faster.",
+        "session_id": out_sid,
+    }
 
 
 def _parse_oneshot(stdout: str) -> HermesReply:

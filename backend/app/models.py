@@ -63,6 +63,18 @@ class SessionListItem(BaseModel):
     size_bytes: int = 0
 
 
+class CompactResponse(BaseModel):
+    """Result of an in-place `/compact` on a harness session.
+
+    `session_id` is preserved (compaction returns the same id, no fork), so a
+    later attach resumes the now-smaller session. `ok` is False with a friendly
+    `message` when there was nothing to compact.
+    """
+    ok: bool
+    message: str
+    session_id: str
+
+
 class HistoryToolCall(BaseModel):
     name: str
     arguments_preview: str

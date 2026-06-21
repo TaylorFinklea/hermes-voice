@@ -29,6 +29,7 @@ from .config import Settings, get_settings
 from .harness import HARNESS_DISPLAY_NAMES, HarnessClient
 from .hermes import HermesClient, HermesError, MockHermesClient, StreamReply, StreamTool
 from .models import (
+    CompactResponse,
     DeviceRegisterRequest,
     DeviceResponse,
     HarnessItem,
@@ -557,6 +558,38 @@ def _register_routes(app: FastAPI) -> None:
             )
             for s in sessions
         ]
+
+    @app.post(
+        "/api/harnesses/{harness_id}/sessions/{session_id}/compact",
+        response_model=CompactResponse,
+        dependencies=[Depends(_require_token)],
+    )
+    async def compact_harness_session(
+        harness_id: str, session_id: str
+    ) -> CompactResponse:
+        """Run the harness' in-place `/compact` against a session so a later
+        resume replays a smaller transcript. Only the Claude harness supports
+        compaction; the session_id is preserved (no fork). 422 on an unknown
+        harness, mirroring the sessions-list route."""
+        harness = _resolve_harness(app, harness_id)
+        compact = getattr(harness, "compact_session", None)
+        if compact is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"harness '{harness_id}' does not support compaction",
+            )
+        try:
+            result = await compact(session_id)
+        except HermesError as e:
+            logger.warning("compaction failed for %s: %s", harness_id, e)
+            raise HTTPException(
+                status_code=502, detail=f"compaction failed: {e}"
+            ) from e
+        return CompactResponse(
+            ok=bool(result.get("ok")),
+            message=str(result.get("message", "")),
+            session_id=str(result.get("session_id") or session_id),
+        )
 
     @app.post(
         "/api/turns/{turn_id}/answer",

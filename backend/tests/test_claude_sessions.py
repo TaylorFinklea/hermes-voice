@@ -120,6 +120,115 @@ def test_harness_sessions_endpoint_unknown_harness_422():
     assert resp.status_code == 422
 
 
+class _FakeClaude:
+    """Minimal claude-like harness with a compact_session capability."""
+
+    def __init__(self, result: dict):
+        self._result = result
+        self.calls: list[str] = []
+
+    def is_available(self) -> bool:
+        return True
+
+    def describe(self) -> dict:
+        return {"bin": "claude", "available": True}
+
+    async def compact_session(self, session_id: str) -> dict:
+        self.calls.append(session_id)
+        return self._result
+
+
+def test_compact_endpoint_success_preserves_session_id():
+    sid = "dddd4444-0000-0000-0000-000000000000"
+    fake = _FakeClaude(
+        {"ok": True, "message": "Session compacted.", "session_id": sid}
+    )
+    client = build_client(hermes=FakeHermes(), stt=None, tts=None)
+    client.app.state.harnesses["claude"] = fake
+    resp = client.post(f"/api/harnesses/claude/sessions/{sid}/compact")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["session_id"] == sid  # preserved, no fork
+    assert fake.calls == [sid]
+
+
+def test_compact_endpoint_not_enough_messages_is_ok_false():
+    sid = "eeee5555-0000-0000-0000-000000000000"
+    fake = _FakeClaude(
+        {
+            "ok": False,
+            "message": "This session is already small — nothing to compact.",
+            "session_id": sid,
+        }
+    )
+    client = build_client(hermes=FakeHermes(), stt=None, tts=None)
+    client.app.state.harnesses["claude"] = fake
+    resp = client.post(f"/api/harnesses/claude/sessions/{sid}/compact")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    assert "nothing to compact" in body["message"].lower()
+
+
+def test_compact_endpoint_non_claude_harness_rejected():
+    # The default hermes harness has no compact_session → 422, not a crash.
+    client = build_client(hermes=FakeHermes(), stt=None, tts=None)
+    resp = client.post("/api/harnesses/hermes/sessions/some-id/compact")
+    assert resp.status_code == 422
+
+
+def test_compact_endpoint_unknown_harness_422():
+    client = build_client(hermes=FakeHermes(), stt=None, tts=None)
+    resp = client.post("/api/harnesses/bogus/sessions/some-id/compact")
+    assert resp.status_code == 422
+
+
+def test_compact_session_mocks_subprocess(monkeypatch, tmp_path):
+    """The adapter method shells `claude -p /compact --resume <id>` and parses
+    the JSON — verified with a mocked subprocess (no real claude)."""
+    import asyncio
+
+    from app.adapters.claude import ClaudeAdapter
+    from app.config import Settings
+
+    sid = "ffff6666-0000-0000-0000-000000000000"
+    a = ClaudeAdapter(Settings(harness_workspace_dir=str(tmp_path)))
+    # No external session on disk → runs in the workspace.
+    monkeypatch.setattr(a, "_session_cwd", lambda s: None)
+
+    captured: dict = {}
+
+    class _FakeProc:
+        returncode = 0
+
+        async def communicate(self):
+            out = (
+                b'{"type":"result","is_error":false,"result":"done",'
+                b'"session_id":"' + sid.encode() + b'"}'
+            )
+            return out, b""
+
+    async def _fake_exec(*args, **kwargs):
+        captured["args"] = args
+        captured["cwd"] = kwargs.get("cwd")
+        return _FakeProc()
+
+    monkeypatch.setattr(
+        "app.adapters.claude.asyncio.create_subprocess_exec", _fake_exec
+    )
+
+    out = asyncio.run(a.compact_session(sid))
+    assert out["ok"] is True
+    assert out["session_id"] == sid
+    # Mirrors the spike-verified invocation.
+    args = captured["args"]
+    assert args[0] == "claude"
+    assert "/compact" in args
+    assert "--resume" in args and sid in args
+    assert "--output-format" in args and "json" in args
+
+
 def test_resolve_cwd_external_session_is_readonly(monkeypatch, tmp_path):
     from app.adapters.claude import ClaudeAdapter
     from app.config import Settings

@@ -10,7 +10,7 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 
 ### Now
 - [x] G — App polish + frontend-design redesign (E · Focus / Now-Playing — deepened) — built; awaiting on-device visual review
-- [x] **Spoken conversational filler** (2026-06-26) — kills the dead-silence-during-a-turn that made the app feel bad to use. Instant local ack ("on it, let me look into that") at dispatch + backend contextual tool narration ("checking the weather for you") as an additive `narrate` SSE event, spoken on-device (AVSpeech). Plus a real barge-in fix (stop during `.thinking`/`.sending`). See `current-state.md` + `decisions.md`. **Pending: backend restart + TestFlight build, then on-device feel test.** Deferred: verbosity setting; full-duplex talk-over barge-in.
+- [x] **Spoken conversational filler** (2026-06-26) — kills the dead-silence-during-a-turn that made the app feel bad to use. Instant local ack ("on it, let me look into that") at dispatch + backend contextual tool narration ("checking the weather for you") as an additive `narrate` SSE event, spoken on-device (AVSpeech). Plus a real barge-in fix (stop during `.thinking`/`.sending`). See `current-state.md` + `decisions.md`. **Pending: on-device feel test.** A **"Spoken updates" verbosity setting** (off/quiet/normal/chatty, with a chatty-only heartbeat) shipped 2026-06-26. Deferred: full-duplex talk-over barge-in.
 
 ### Next — scoped via `.docs/ai/phases/schedules-spec.md`
 - [x] Schedules Phase A — store + cron + in-app UI (no push)

@@ -16,7 +16,13 @@ import pytest
 
 from app import acp_client
 from app.config import get_settings
-from app.hermes import _VOICE_PRELUDE, HermesError, StreamReply, StreamTool
+from app.hermes import (
+    _VOICE_PRELUDE,
+    HermesError,
+    StreamNarration,
+    StreamReply,
+    StreamTool,
+)
 from app.session_audit import ToolCallSummary
 
 # --- ACP wire-shaped fake events (raw dicts, camelCase aliases) --------------
@@ -146,6 +152,24 @@ async def test_drive_turn_emits_stream_tool_then_reply_with_summary():
     assert [(t.name, t.preview) for t in tools] == [("terminal", "$ echo hi")]
     assert reply.text == "Done."
     assert reply.tools == [ToolCallSummary(name="terminal", preview="$ echo hi", ok=True)]
+
+
+async def test_drive_turn_emits_narration_alongside_tool_without_polluting_reply():
+    # A tool_call update yields BOTH a live StreamTool and a side-channel
+    # StreamNarration; the narration text never enters the authoritative reply.
+    obs = acp_client._AcpStreamObserver()
+    events = [
+        _tool("terminal: $ echo hi", "tc-1"),
+        _msg("Done."),
+    ]
+    conn = FakeConn(obs, events)
+    out = await _drive(conn, obs, "s1", text="run it")
+    narrations = [e for e in out if isinstance(e, StreamNarration)]
+    assert len(narrations) == 1
+    assert narrations[0].text.strip()  # non-empty spoken phrase
+    # Side-channel: must not leak into the final reply text.
+    reply = next(e for e in out if isinstance(e, StreamReply))
+    assert reply.text == "Done."
 
 
 async def test_drive_turn_marks_failed_tool_not_ok():

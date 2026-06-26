@@ -87,6 +87,14 @@ class StreamTool:
 
 
 @dataclass(frozen=True)
+class StreamNarration:
+    """A short, warm spoken-filler phrase to narrate a tool call live. Side
+    channel — never enters reply_parts and never affects the final StreamReply.
+    Spoken by iOS AVSpeech (tts="none"), not server-synthesized."""
+    text: str
+
+
+@dataclass(frozen=True)
 class StreamReply:
     """Final, authoritative turn result, sourced from the session export."""
     text: str

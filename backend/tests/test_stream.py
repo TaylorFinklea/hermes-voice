@@ -3,7 +3,36 @@ from __future__ import annotations
 
 import json
 
+from app.hermes import HermesClient, HermesReply, StreamNarration, StreamReply, StreamTool
+from app.session_audit import ToolCallSummary
+
 from .conftest import FakeHermes, FakeTTS, build_client
+
+
+class NarratingHermes(HermesClient):
+    """Fake hermes that yields a StreamNarration alongside its tool event, like
+    the warm ACP path does. Mirrors conftest.FakeHermes."""
+
+    def __init__(self, reply: str = "Done."):
+        self._reply = reply
+
+    def is_available(self) -> bool:
+        return True
+
+    def describe(self) -> dict:
+        return {"bin": "fake-narrating", "available": True}
+
+    async def ask(self, prompt: str, session_id: str | None = None) -> HermesReply:
+        return HermesReply(text=self._reply, session_id=session_id or "fake-session-1")
+
+    async def ask_streaming(self, prompt: str, session_id: str | None = None):
+        yield StreamTool(name="terminal", preview="$ echo hi")
+        yield StreamNarration(text="Alright, let me run that.")
+        yield StreamReply(
+            text=self._reply,
+            session_id=session_id or "fake-session-1",
+            tools=[ToolCallSummary(name="terminal", preview="$ echo hi", ok=True)],
+        )
 
 
 def _parse_sse(body: str) -> list[dict]:
@@ -47,6 +76,24 @@ def test_text_stream_tool_events_present_and_reconciled():
     auth = next(e for e in events if e["type"] == "tools")
     assert live and live[0]["name"] == "terminal"
     assert auth["items"] and auth["items"][0]["name"] == "terminal"
+
+
+def test_text_stream_emits_narrate_frame_for_tool_turn():
+    # A tool-using turn emits an additive `narrate` SSE frame (spoken filler),
+    # interleaved with the live tool frames. iOS speaks it via AVSpeech.
+    client = build_client(hermes=NarratingHermes(reply="Done."), tts=FakeTTS())
+    with client.stream("POST", "/api/text/stream", json={"text": "run it"}) as resp:
+        assert resp.status_code == 200
+        body = "".join(resp.iter_text())
+
+    events = _parse_sse(body)
+    narrate = next(e for e in events if e["type"] == "narrate")
+    assert narrate["text"].strip()
+    # Existing frames still flow and stay ordered.
+    types = [e["type"] for e in events]
+    assert types[0] == "transcribed"
+    assert "assistant" in types
+    assert types[-1] == "done"
 
 
 def test_text_stream_rejects_malformed_voice_id():

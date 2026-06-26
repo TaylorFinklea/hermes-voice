@@ -33,7 +33,15 @@ import acp
 from acp.schema import AllowedOutcome, RequestPermissionResponse, TextContentBlock
 
 from .config import Settings
-from .hermes import _VOICE_PRELUDE, HermesError, HermesReply, StreamReply, StreamTool
+from .hermes import (
+    _VOICE_PRELUDE,
+    HermesError,
+    HermesReply,
+    StreamNarration,
+    StreamReply,
+    StreamTool,
+)
+from .narration import tool_narration
 from .session_audit import ToolCallSummary
 
 
@@ -128,13 +136,14 @@ class _AcpClient:
 
 def _process_update(update: dict, reply_parts: list[str], tools_by_id: dict, order: list[str]):
     """Fold one ACP `session/update` payload (raw dict, camelCase wire aliases)
-    into turn state. Returns a StreamTool to emit live, or None."""
+    into turn state. Returns a list of events to emit live (a StreamTool, and
+    optionally a side-channel StreamNarration) — empty when nothing streams."""
     su = update.get("sessionUpdate")
     if su == "agent_message_chunk":
         text = (update.get("content") or {}).get("text")
         if text:
             reply_parts.append(text)
-        return None
+        return []
     if su == "tool_call":
         name, preview = _split_title(update.get("title") or "")
         tcid = update.get("toolCallId")
@@ -143,7 +152,13 @@ def _process_update(update: dict, reply_parts: list[str], tools_by_id: dict, ord
             if tcid not in tools_by_id:
                 order.append(tcid)
             tools_by_id[tcid] = ToolCallSummary(name=name, preview=preview, ok=ok)
-        return StreamTool(name=name, preview=preview)
+        events: list = [StreamTool(name=name, preview=preview)]
+        # Side-channel spoken filler — kept out of reply_parts so it never
+        # touches the authoritative StreamReply.
+        phrase = tool_narration(name, preview, update.get("rawInput"))
+        if phrase:
+            events.append(StreamNarration(text=phrase))
+        return events
     if su == "tool_call_update":
         tcid = update.get("toolCallId")
         if tcid in tools_by_id:
@@ -151,13 +166,13 @@ def _process_update(update: dict, reply_parts: list[str], tools_by_id: dict, ord
             status = update.get("status")
             ok = _status_ok(status) if status is not None else prev.ok
             tools_by_id[tcid] = ToolCallSummary(name=prev.name, preview=prev.preview, ok=ok)
-        return None
-    return None
+        return []
+    return []
 
 
 async def _drive_turn(
     conn, observer: _AcpStreamObserver, *, session_id, text, cwd, voice_system_prompt=None
-) -> AsyncGenerator[StreamTool | StreamReply, None]:
+) -> AsyncGenerator[StreamTool | StreamNarration | StreamReply, None]:
     """Run one turn against a warm ACP connection, yielding StreamTool events
     live and a final authoritative StreamReply. Mirrors HermesClient.ask_streaming's
     contract. Because the observer enqueues every notification inline before the
@@ -185,8 +200,7 @@ async def _drive_turn(
             getter = asyncio.ensure_future(queue.get())
             done, _ = await asyncio.wait({getter, prompt_task}, return_when=asyncio.FIRST_COMPLETED)
             if getter in done:
-                st = _process_update(getter.result(), reply_parts, tools_by_id, order)
-                if st is not None:
+                for st in _process_update(getter.result(), reply_parts, tools_by_id, order):
                     yield st
                 continue
             # Prompt resolved → every notification is already enqueued (inline
@@ -195,8 +209,7 @@ async def _drive_turn(
             with contextlib.suppress(asyncio.CancelledError):
                 await getter
             while not queue.empty():
-                st = _process_update(queue.get_nowait(), reply_parts, tools_by_id, order)
-                if st is not None:
+                for st in _process_update(queue.get_nowait(), reply_parts, tools_by_id, order):
                     yield st
             break
         await prompt_task  # surface a prompt-side error (RequestError, etc.)

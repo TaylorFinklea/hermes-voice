@@ -27,7 +27,14 @@ from .approvals import ApprovalBroker
 from .audio_store import AudioStore
 from .config import Settings, get_settings
 from .harness import HARNESS_DISPLAY_NAMES, HarnessClient
-from .hermes import HermesClient, HermesError, MockHermesClient, StreamReply, StreamTool
+from .hermes import (
+    HermesClient,
+    HermesError,
+    MockHermesClient,
+    StreamNarration,
+    StreamReply,
+    StreamTool,
+)
 from .models import (
     CompactResponse,
     DeviceRegisterRequest,
@@ -897,6 +904,11 @@ async def _stream_turn(
         async for ev in hermes.ask_streaming(user_text, session_id=session_id):
             if isinstance(ev, StreamTool):
                 yield sse({"type": "tool", "name": ev.name, "preview": ev.preview, "ok": True})
+            elif isinstance(ev, StreamNarration):
+                # Side-channel spoken filler — narrate frames interleave with the
+                # live tool frames. iOS speaks these via AVSpeech (LocalSpeaker);
+                # never server-synthesized. Legacy HermesClient never yields this.
+                yield sse({"type": "narrate", "text": ev.text})
             elif isinstance(ev, StreamReply):
                 yield sse({"type": "tools", "items": [tc.as_dict() for tc in ev.tools]})
                 yield sse({"type": "assistant", "text": ev.text, "session_id": ev.session_id})

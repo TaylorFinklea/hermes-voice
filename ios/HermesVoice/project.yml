@@ -18,7 +18,7 @@ settings:
     # every TestFlight upload (App Store Connect rejects duplicate builds);
     # MARKETING_VERSION is the user-facing version string.
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "26"
+    CURRENT_PROJECT_VERSION: "27"
 
 # On-device speech-to-text — NVIDIA Parakeet (TDT) ASR via CoreML, the same
 # FluidAudio package the user runs in ~/git/tesela. Pinned to the exact revision

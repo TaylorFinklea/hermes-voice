@@ -2,6 +2,13 @@
 
 > Updated at the end of every work session. Read this first.
 
+## Spoken conversational filler — ack + contextual narration (2026-06-26)
+
+User feedback, the real reason they don't use it: a turn is SILENT while the agent works → feels broken even when fast. Fix = spoken filler (see [[voice-perceived-latency-needs-spoken-filler]]). Designed via judged design workflow (`w8y7ffq3k`); built + adversarially reviewed (`wmedfcx0d` — both halves APPROVE, every risk-checklist item PASS). Tone = warm/casual/first-person; scope = full (user choices).
+- **iOS (committed):** instant first-person ACK at dispatch (`FillerPhrases.ack()`, local, zero-latency, one/turn via `didAckThisTurn`) + non-blocking `LocalSpeaker.narrate()` with a 1-deep coalescing queue (reply `speak()`/`stop()` hard-cuts it) + speaks `.narrate` SSE events. **Fixed a real barge-in bug**: `stop()` now fires in the `.thinking`/`.sending` arms of `userPressedMic` + `cancelCurrentTurn` (was `.speaking`-only → Hermes talked over a mid-think interrupt). Leak guard: `ConversationModeController` stops narration before the hands-free loop re-arms `listen()`. 44 iOS tests (+4).
+- **Backend (committed):** new pure `app/narration.py tool_narration(name, preview, args)` (warm phrases per tool family + weather-location arg enrichment + None for noise) → `StreamNarration` side-channel (kept OUT of `reply_parts` → can't corrupt the reply or the empty-reply guard) yielded from `_process_update`'s tool_call branch → `_stream_turn` emits additive `sse({"type":"narrate","text":...})`. Only the warm ACP path emits it; legacy/mock unaffected. 216 backend tests (+24). **Needs backend restart + a TestFlight build to reach the device.**
+- Contract: `{"type":"narrate","text":...}` ↔ iOS `TurnEvent.narrate(String)`. Deferred product follow-ups: a chattiness/verbosity setting; full-duplex talk-over-the-filler barge-in (large, separate — today barge-in is button/tap). Minor known: `FillerPhrases.ack()` static counter is main-actor-only by usage, not annotated.
+
 ## Backlog burn (ultracode workflows, 2026-06-20)
 
 Triage workflow (`wllyeadau`, 8 parallel readers) assessed every open backlog item vs live code; burn workflow (`wgeycmki7`, implement→verify→adversarial-review) landed the two autoburnable ones.

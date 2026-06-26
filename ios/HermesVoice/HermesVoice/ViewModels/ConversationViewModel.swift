@@ -106,6 +106,11 @@ final class ConversationViewModel: ObservableObject {
     private let player = AudioPlayer()
     private var currentTurn: Task<Void, Never>? = nil
 
+    /// One instant on-device ack per turn. Set when the turn is dispatched (the
+    /// .thinking flip) so `sendText` flowing into `consumeTurn`'s `.transcribed`
+    /// arm can't double-fire. Reset whenever a fresh turn begins.
+    private var didAckThisTurn = false
+
     // Phase B: voice answers. A dedicated capture engine (separate from the
     // push-to-talk recorder + the mic button, which stays barge-in/cancel) auto-
     // listens for a spoken yes/no/option while an approval/question card is up.
@@ -158,6 +163,9 @@ final class ConversationViewModel: ObservableObject {
             // touching state, so it can't clobber the new recording.
             currentTurn?.cancel()
             currentTurn = nil
+            // Cut any spoken filler (instant ack / tool narration) so Hermes
+            // isn't still talking over the user's new recording.
+            LocalSpeaker.shared.stop()
             state = .idle
             await startRecording()
         case .idle, .error:
@@ -180,6 +188,7 @@ final class ConversationViewModel: ObservableObject {
         // audio-upload path with the same clip, so there's no regression.
         let useLocal = settings.useOnDeviceSTT && LocalTranscriber.shared.isReady
         sendingPhase = useLocal ? .transcribing : .uploading
+        didAckThisTurn = false
         state = .sending
 
         let api = self.api
@@ -200,6 +209,7 @@ final class ConversationViewModel: ObservableObject {
                     guard !trimmed.isEmpty else { self.state = .idle; return }  // heard nothing
                     self.messages.append(Message(role: .user, text: trimmed))
                     self.state = .thinking
+                    self.fireInstantAckIfNeeded()
                     await self.streamTextTurnBody(trimmed, sessionId: currentSession, voiceId: voiceId, tts: ttsMode, harness: harnessId, mode: modeId)
                     return
                 } catch is CancellationError {
@@ -260,7 +270,9 @@ final class ConversationViewModel: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         messages.append(Message(role: .user, text: trimmed))
+        didAckThisTurn = false
         state = .thinking
+        fireInstantAckIfNeeded()
 
         let currentSession = sessionId
         let voiceId = settings.serverVoiceId
@@ -339,7 +351,19 @@ final class ConversationViewModel: ObservableObject {
                 }
                 // STT done; Hermes is working — move to the thinking pane so the
                 // live tool chips show (audio turns start in .sending).
-                if state == .sending { state = .thinking }
+                if state == .sending {
+                    state = .thinking
+                    // Audio-upload path: the user text just landed, so this is
+                    // the turn's dispatch moment — fire the instant ack here.
+                    fireInstantAckIfNeeded()
+                }
+            case .narrate(let text):
+                // Backend-authored spoken tool filler ("Checking the weather…").
+                // On-device path only (tts=none) — speak it on the phone,
+                // non-blocking; the real reply hard-cuts it.
+                if settings.isLocalVoiceSelected {
+                    LocalSpeaker.shared.narrate(text, voice: settings.localVoiceName)
+                }
             case .tool(let name, let preview, let ok):
                 let m = Message(
                     role: .toolCall, text: "\(name): \(preview)",
@@ -535,6 +559,17 @@ final class ConversationViewModel: ObservableObject {
         state = .error(error.localizedDescription)
     }
 
+    /// Speak a warm, casual on-device acknowledgment the instant a turn is
+    /// dispatched (the .thinking flip) — only when an on-device voice is active
+    /// (the tts=none path) and at most once per turn. Fire-and-forget; the real
+    /// reply's `speak()` hard-cuts it. Backend `narrate` events own per-tool
+    /// filler; this is the generic "I heard you" before any tool runs.
+    private func fireInstantAckIfNeeded() {
+        guard settings.isLocalVoiceSelected, !didAckThisTurn else { return }
+        didAckThisTurn = true
+        LocalSpeaker.shared.narrate(FillerPhrases.ack(), voice: settings.localVoiceName)
+    }
+
     func clearError() {
         if case .error = state { state = .idle }
     }
@@ -554,6 +589,8 @@ final class ConversationViewModel: ObservableObject {
         case .sending, .thinking:
             currentTurn?.cancel()
             currentTurn = nil
+            // Cut any spoken filler (instant ack / tool narration) too.
+            LocalSpeaker.shared.stop()
             state = .idle
         case .speaking:
             player.stop()

@@ -165,6 +165,17 @@ final class DecoderTests: XCTestCase {
         ]))
     }
 
+    func testParseEventNarrate() {
+        XCTAssertEqual(parse(#"{"type":"narrate","text":"hi"}"#),
+                       .narrate("hi"))
+    }
+
+    /// Missing text falls back to empty (additive frame, lenient like the rest).
+    func testParseEventNarrateDefaults() {
+        XCTAssertEqual(parse(#"{"type":"narrate"}"#),
+                       .narrate(""))
+    }
+
     func testParseEventAssistant() {
         XCTAssertEqual(
             parse(#"{"type":"assistant","text":"reply","session_id":"s-7"}"#),

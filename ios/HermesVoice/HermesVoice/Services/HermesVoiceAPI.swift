@@ -396,6 +396,10 @@ struct HermesVoiceAPI {
         case transcribed(String)
         case tool(name: String, preview: String, ok: Bool)
         case tools([ToolCall])
+        // A short, warm spoken-filler phrase the backend emits per tool call.
+        // Spoken on-device (AVSpeech) on the tts=none path; never synthesized
+        // server-side. Additive — older backends simply never send it.
+        case narrate(String)
         case assistant(text: String, sessionId: String)
         case audio(path: String)
         case done(sessionId: String)
@@ -529,6 +533,8 @@ struct HermesVoiceAPI {
                     ok: $0["ok"] as? Bool ?? true
                 )
             })
+        case "narrate":
+            return .narrate(obj["text"] as? String ?? "")
         case "assistant":
             return .assistant(
                 text: obj["text"] as? String ?? "",

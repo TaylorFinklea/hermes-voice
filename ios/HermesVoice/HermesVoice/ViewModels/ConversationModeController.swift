@@ -118,6 +118,12 @@ final class ConversationModeController: ObservableObject {
             await vm.sendText(trimmed)   // full turn incl. on-device speak; returns when done
             if Task.isCancelled { break }
 
+            // Stop any pending/queued spoken filler BEFORE re-arming the mic — a
+            // fast or empty reply (no real `speak()` to hard-cut it) could
+            // otherwise leak an instant-ack / narration phrase into the next
+            // capture and self-transcribe it.
+            LocalSpeaker.shared.stop()
+
             // Let the audio session settle between speaking (.playback) and the
             // next listen (.playAndRecord) — the same dirty-state guard barge-in uses.
             try? await Task.sleep(nanoseconds: 50_000_000)

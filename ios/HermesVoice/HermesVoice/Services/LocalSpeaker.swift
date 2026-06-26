@@ -55,6 +55,17 @@ final class LocalSpeaker: ObservableObject {
 
     private var speakTask: Task<Void, Never>?
     private var speakContinuation: CheckedContinuation<Void, Error>?
+
+    /// Fire-and-forget narration task (spoken filler). Tracked separately from
+    /// `speakTask` so the real reply's `speak()`/`stop()` can hard-cut it, and so
+    /// a second `narrate()` can coalesce onto the in-flight one rather than
+    /// truncating it mid-word.
+    private var narrateTask: Task<Void, Never>?
+    /// At most one pending narration. A second `narrate()` while one is still
+    /// speaking parks its (cleaned text, resolved voice) here; the in-flight task
+    /// plays it when the current utterance finishes. A third overwrites it, so we
+    /// keep only the latest — 1-deep coalescing.
+    private var pendingNarration: (text: String, voice: AVSpeechSynthesisVoice?)?
     /// The utterance the active continuation is waiting on. The delegate resolves
     /// the continuation only for this exact utterance — `stopSpeaking(.immediate)`
     /// fires `didCancel` asynchronously, and disowning the utterance here prevents
@@ -107,8 +118,69 @@ final class LocalSpeaker: ObservableObject {
         await task.value
     }
 
-    /// Stop any in-flight speech immediately (barge-in / cancel).
+    /// Speak a short spoken filler phrase NON-BLOCKING (fire-and-forget). Mirrors
+    /// `speak()`'s session/continuation/voice handling but does NOT await — the
+    /// caller dispatches a turn and the filler plays alongside it. The real
+    /// reply's `speak()` (and `stop()`) hard-cut any in-flight or queued
+    /// narration, so the reply always wins.
+    ///
+    /// 1-deep coalescing: if a narration is already speaking, the new text is
+    /// QUEUED and played when the current one finishes (no mid-word truncation);
+    /// a further narration overwrites the queued one, keeping only the latest.
+    func narrate(_ text: String, voice: String) {
+        // The real reply always wins — never narrate over (or interleave a
+        // continuation with) an in-flight `speak()`.
+        guard speakTask == nil else { return }
+        let cleaned = Self.makeSpeakable(text)
+        guard !cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let resolvedVoice = Self.resolveVoice(voice)
+
+        // Already narrating → queue (1-deep, latest wins) and let the running
+        // task pick it up when the current utterance finishes.
+        if narrateTask != nil {
+            pendingNarration = (cleaned, resolvedVoice)
+            return
+        }
+
+        startNarration(text: cleaned, voice: resolvedVoice)
+    }
+
+    /// Run one narration task that drains the 1-deep queue: speak the given text,
+    /// then keep speaking whatever `pendingNarration` holds when each finishes.
+    private func startNarration(text: String, voice: AVSpeechSynthesisVoice?) {
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            AudioSessionCoordinator.shared.acquire(.playback)
+            defer { AudioSessionCoordinator.shared.release() }
+            var next: (text: String, voice: AVSpeechSynthesisVoice?)? = (text, voice)
+            while let current = next {
+                next = nil
+                if Task.isCancelled { break }
+                do {
+                    try await self.speakUtterance(current.text, voice: current.voice)
+                } catch is CancellationError {
+                    break  // barge-in / reply took over
+                } catch {
+                    print("[HermesVoice] LocalSpeaker: narration synthesis failed: \(error)")
+                }
+                if Task.isCancelled { break }
+                // Pick up a phrase queued while this one was speaking (latest wins).
+                next = self.pendingNarration
+                self.pendingNarration = nil
+            }
+            self.narrateTask = nil
+        }
+        narrateTask = task
+    }
+
+    /// Stop any in-flight speech immediately (barge-in / cancel). Hard-cuts the
+    /// real reply AND any in-flight/queued narration — the reply always wins, so
+    /// the narration queue is flushed here too.
     func stop() {
+        // Flush narration first so a cancelled utterance can't drain the queue.
+        pendingNarration = nil
+        narrateTask?.cancel()
+        narrateTask = nil
         speakTask?.cancel()
         speakTask = nil
         // Disown before stopping so the resulting didCancel is ignored.

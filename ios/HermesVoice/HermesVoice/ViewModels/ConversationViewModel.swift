@@ -111,6 +111,22 @@ final class ConversationViewModel: ObservableObject {
     /// arm can't double-fire. Reset whenever a fresh turn begins.
     private var didAckThisTurn = false
 
+    /// `chatty` verbosity only: a periodic "still working on it" heartbeat spoken
+    /// during long silent gaps in a turn. Started at turn dispatch (alongside the
+    /// ack) and cancelled at EVERY turn-end path (completion, error, cancel,
+    /// barge-in, and before the hands-free loop re-arms) so it never speaks after
+    /// the real reply begins or leaks into the next turn. Reuses
+    /// `LocalSpeaker.narrate()`, so the reply's `speak()`/`stop()` hard-cuts it.
+    private var heartbeatTask: Task<Void, Never>? = nil
+
+    /// When ANY filler (ack / narrate / heartbeat) was last spoken, so the
+    /// heartbeat fires only after a real silent gap — not right after a tool
+    /// narration. Updated by `noteFillerSpoken()`.
+    private var lastFillerSpokenAt: Date = .distantPast
+
+    /// Idle gap before the chatty heartbeat speaks again.
+    private static let heartbeatGap: TimeInterval = 9
+
     // Phase B: voice answers. A dedicated capture engine (separate from the
     // push-to-talk recorder + the mic button, which stays barge-in/cancel) auto-
     // listens for a spoken yes/no/option while an approval/question card is up.
@@ -148,6 +164,7 @@ final class ConversationViewModel: ObservableObject {
             return  // already recording; ignore press, gesture handles release
         case .speaking:
             player.stop()
+            stopHeartbeat()
             LocalSpeaker.shared.stop()   // also cut on-device TTS playback
             // Brief yield so the audio session deactivates before we
             // re-activate it for recording. Without this, .playAndRecord
@@ -163,8 +180,9 @@ final class ConversationViewModel: ObservableObject {
             // touching state, so it can't clobber the new recording.
             currentTurn?.cancel()
             currentTurn = nil
-            // Cut any spoken filler (instant ack / tool narration) so Hermes
-            // isn't still talking over the user's new recording.
+            // Cut any spoken filler (instant ack / tool narration / heartbeat) so
+            // Hermes isn't still talking over the user's new recording.
+            stopHeartbeat()
             LocalSpeaker.shared.stop()
             state = .idle
             await startRecording()
@@ -360,9 +378,11 @@ final class ConversationViewModel: ObservableObject {
             case .narrate(let text):
                 // Backend-authored spoken tool filler ("Checking the weather…").
                 // On-device path only (tts=none) — speak it on the phone,
-                // non-blocking; the real reply hard-cuts it.
-                if settings.isLocalVoiceSelected {
+                // non-blocking; the real reply hard-cuts it. Gated by verbosity:
+                // per-tool narration is `normal`+ only (`off`/`quiet` ignore it).
+                if settings.isLocalVoiceSelected, settings.fillerVerbosity >= .normal {
                     LocalSpeaker.shared.narrate(text, voice: settings.localVoiceName)
+                    noteFillerSpoken()
                 }
             case .tool(let name, let preview, let ok):
                 let m = Message(
@@ -389,6 +409,9 @@ final class ConversationViewModel: ObservableObject {
                 finalSessionId = sid.isEmpty ? finalSessionId : sid
                 messages.append(Message(role: .assistant, text: txt))
                 settings.markReachable()
+                // Real reply is here — kill the chatty heartbeat before it can
+                // speak over (or right after) the reply.
+                stopHeartbeat()
                 // On-device TTS: the backend was told tts=none and won't emit an
                 // `audio` event, so synthesize + speak the reply here on the phone.
                 if settings.isLocalVoiceSelected {
@@ -414,6 +437,7 @@ final class ConversationViewModel: ObservableObject {
                 // Don't paint a turn red if its reply already arrived — a server
                 // error AFTER the assistant text is a downstream (TTS/audit)
                 // failure, not a failed turn.
+                stopHeartbeat()
                 if sawAssistant {
                     if state == .thinking || state == .sending { state = .idle }
                 } else {
@@ -439,6 +463,10 @@ final class ConversationViewModel: ObservableObject {
                 }
             }
         }
+        // Stream ended — no more filler is coming, so stop the chatty heartbeat
+        // before the recovery / idle settle (it's also stopped on the `.assistant`
+        // and `.failed` arms above, but a clean no-reply close exits here).
+        stopHeartbeat()
         if !sawAssistant,
            let sid = finalSessionId,
            await recoverMissingAssistantFromHistory(sessionId: sid, turnUserText: turnUserText) {
@@ -461,6 +489,10 @@ final class ConversationViewModel: ObservableObject {
         sessionId: String?,
         turnUserText: String?
     ) async -> Bool {
+        // This recovery path can reach here via a thrown stream (consumeTurn's
+        // tail stop was skipped), so kill the chatty heartbeat before it might
+        // speak the recovered reply.
+        stopHeartbeat()
         guard let sessionId, !sessionId.isEmpty, !Task.isCancelled else { return false }
         do {
             let detail = try await api.getSession(id: sessionId)
@@ -556,6 +588,7 @@ final class ConversationViewModel: ObservableObject {
     }
 
     private func failTurn(_ error: Error) {
+        stopHeartbeat()
         state = .error(error.localizedDescription)
     }
 
@@ -567,7 +600,56 @@ final class ConversationViewModel: ObservableObject {
     private func fireInstantAckIfNeeded() {
         guard settings.isLocalVoiceSelected, !didAckThisTurn else { return }
         didAckThisTurn = true
-        LocalSpeaker.shared.narrate(FillerPhrases.ack(), voice: settings.localVoiceName)
+        // `off` speaks nothing — not even the instant ack.
+        if settings.fillerVerbosity != .off {
+            LocalSpeaker.shared.narrate(FillerPhrases.ack(), voice: settings.localVoiceName)
+            noteFillerSpoken()
+        }
+        // `chatty` runs a periodic "still working" heartbeat during silent gaps;
+        // start it at dispatch (alongside the ack) so the first beat is one gap
+        // out from the ack.
+        startHeartbeatIfNeeded()
+    }
+
+    /// Record that some filler (ack / narrate / heartbeat) just spoke, so the
+    /// chatty heartbeat waits a fresh gap before firing again.
+    private func noteFillerSpoken() {
+        lastFillerSpokenAt = Date()
+    }
+
+    /// Start the chatty heartbeat loop for this turn (no-op unless an on-device
+    /// voice is active AND verbosity is `chatty`). Cancels any prior task first so
+    /// a heartbeat can't leak across turns.
+    private func startHeartbeatIfNeeded() {
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+        guard settings.isLocalVoiceSelected, settings.fillerVerbosity == .chatty else { return }
+        heartbeatTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                let elapsed = Date().timeIntervalSince(self.lastFillerSpokenAt)
+                let wait = Self.heartbeatGap - elapsed
+                if wait > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                }
+                if Task.isCancelled { return }
+                // Only speak while the turn is still working — never over a reply
+                // that's already speaking, and not once we've fallen idle.
+                guard self.state == .thinking || self.state == .sending else { return }
+                // A filler spoke during our sleep → reset the gap, don't beat yet.
+                guard Date().timeIntervalSince(self.lastFillerSpokenAt) >= Self.heartbeatGap else { continue }
+                LocalSpeaker.shared.narrate(FillerPhrases.heartbeat(), voice: self.settings.localVoiceName)
+                self.noteFillerSpoken()
+            }
+        }
+    }
+
+    /// Cancel the chatty heartbeat. Called at every turn-end path (completion,
+    /// error, cancel, barge-in, and before the hands-free loop re-arms) so it
+    /// never speaks after the real reply begins or leaks into the next turn.
+    func stopHeartbeat() {
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
     }
 
     func clearError() {
@@ -589,11 +671,13 @@ final class ConversationViewModel: ObservableObject {
         case .sending, .thinking:
             currentTurn?.cancel()
             currentTurn = nil
-            // Cut any spoken filler (instant ack / tool narration) too.
+            // Cut any spoken filler (instant ack / tool narration / heartbeat) too.
+            stopHeartbeat()
             LocalSpeaker.shared.stop()
             state = .idle
         case .speaking:
             player.stop()
+            stopHeartbeat()
             LocalSpeaker.shared.stop()
             state = .idle
         case .idle, .error:
@@ -785,6 +869,9 @@ final class ConversationViewModel: ObservableObject {
     // MARK: - Internals
 
     private func handle(response: HermesVoiceAPI.TurnResponse) async {
+        // Single-shot fallback delivered the reply — kill any chatty heartbeat
+        // before speaking it.
+        stopHeartbeat()
         settings.markReachable()
         // For audio mode the user text comes from STT — append it now.
         if state == .sending {

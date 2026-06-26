@@ -22,4 +22,22 @@ final class FillerPhrasesTests: XCTestCase {
             )
         }
     }
+
+    func testHeartbeatNeverRepeatsConsecutively() {
+        var previous = FillerPhrases.heartbeat()
+        for _ in 0..<1000 {
+            let next = FillerPhrases.heartbeat()
+            XCTAssertNotEqual(next, previous, "heartbeat() returned the same phrase twice in a row")
+            previous = next
+        }
+    }
+
+    func testHeartbeatIsNonEmpty() {
+        for _ in 0..<100 {
+            XCTAssertFalse(
+                FillerPhrases.heartbeat().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                "heartbeat() returned an empty phrase"
+            )
+        }
+    }
 }

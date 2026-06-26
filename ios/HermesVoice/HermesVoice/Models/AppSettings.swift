@@ -2,6 +2,44 @@ import Foundation
 import Combine
 import SwiftUI
 
+/// How chatty the on-device spoken filler is while a turn works. Gates the
+/// existing filler behavior (instant ack + per-tool narration + heartbeat) — the
+/// backend keeps emitting `narrate` events regardless; the app decides what to
+/// SPEAK. Ordered off < quiet < normal < chatty; default `.normal` = today's
+/// behavior (ack + per-tool narration).
+enum FillerVerbosity: String, CaseIterable, Codable, Comparable, Identifiable {
+    case off
+    case quiet
+    case normal
+    case chatty
+
+    var id: String { rawValue }
+
+    /// Sort order, used by `Comparable` and the `>= .normal` gates.
+    private var rank: Int {
+        switch self {
+        case .off: return 0
+        case .quiet: return 1
+        case .normal: return 2
+        case .chatty: return 3
+        }
+    }
+
+    static func < (lhs: FillerVerbosity, rhs: FillerVerbosity) -> Bool {
+        lhs.rank < rhs.rank
+    }
+
+    /// User-facing label for the Settings picker.
+    var label: String {
+        switch self {
+        case .off: return "Off"
+        case .quiet: return "Quiet"
+        case .normal: return "Normal"
+        case .chatty: return "Chatty"
+        }
+    }
+}
+
 /// User-facing settings. Persisted in UserDefaults so they survive launches.
 final class AppSettings: ObservableObject {
     enum Mode: String, CaseIterable, Identifiable {
@@ -116,6 +154,14 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(useOnDeviceSTT, forKey: Keys.useOnDeviceSTT) }
     }
 
+    /// How much Harness talks while it works (on-device voice only). Gates the
+    /// spoken filler: off → silent; quiet → instant ack only; normal → ack +
+    /// per-tool narration (default / today's behavior); chatty → adds a periodic
+    /// "still working" heartbeat during long silent gaps.
+    @Published var fillerVerbosity: FillerVerbosity {
+        didSet { UserDefaults.standard.set(fillerVerbosity.rawValue, forKey: Keys.fillerVerbosity) }
+    }
+
     // ───── Harness (which agent backs a turn) ─────
 
     /// The agent backend a turn is routed to: "hermes" (default), "claude",
@@ -179,6 +225,8 @@ final class AppSettings: ObservableObject {
         // behavior once the model is present. Harmless before download (falls
         // back to upload).
         self.useOnDeviceSTT = d.object(forKey: Keys.useOnDeviceSTT) as? Bool ?? true
+        let fillerRaw = d.string(forKey: Keys.fillerVerbosity) ?? FillerVerbosity.normal.rawValue
+        self.fillerVerbosity = FillerVerbosity(rawValue: fillerRaw) ?? .normal
         self.selectedHarness = d.string(forKey: Keys.selectedHarness) ?? "hermes"
         // Onboarding shows on a fresh install (default URL + flag unset). Treat
         // an already-configured non-default backend as onboarded so upgraders
@@ -201,6 +249,7 @@ final class AppSettings: ObservableObject {
         static let hasCompletedOnboarding = "hv.hasCompletedOnboarding"
         static let selectedVoiceId = "hv.selectedVoiceId"
         static let useOnDeviceSTT = "hv.useOnDeviceSTT"
+        static let fillerVerbosity = "hv.fillerVerbosity"
         static let selectedHarness = "hv.selectedHarness"
     }
 }

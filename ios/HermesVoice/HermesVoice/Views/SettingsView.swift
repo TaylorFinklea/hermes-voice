@@ -319,6 +319,22 @@ struct SettingsView: View {
                     .foregroundStyle(HVColor.bronze)
                     .listRowBackground(HVColor.creamSurface)
             }
+            // Spoken filler only operates on the on-device voice path, so only
+            // surface the control when an on-device voice is selected.
+            if settings.isLocalVoiceSelected {
+                Picker("Spoken updates", selection: $settings.fillerVerbosity) {
+                    ForEach(FillerVerbosity.allCases) { v in
+                        Text(v.label).tag(v)
+                    }
+                }
+                .pickerStyle(.navigationLink)
+                .tint(HVColor.amber)
+                .listRowBackground(HVColor.creamSurface)
+                Text("How much Harness talks while it works.")
+                    .font(HVFont.captionTiny)
+                    .foregroundStyle(HVColor.creamDim)
+                    .listRowBackground(HVColor.creamSurface)
+            }
         } header: {
             sectionHeader("ON-DEVICE VOICE")
         } footer: {

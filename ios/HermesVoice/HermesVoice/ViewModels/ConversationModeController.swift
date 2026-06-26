@@ -121,7 +121,9 @@ final class ConversationModeController: ObservableObject {
             // Stop any pending/queued spoken filler BEFORE re-arming the mic — a
             // fast or empty reply (no real `speak()` to hard-cut it) could
             // otherwise leak an instant-ack / narration phrase into the next
-            // capture and self-transcribe it.
+            // capture and self-transcribe it. Cancel the chatty heartbeat too so
+            // a beat scheduled mid-turn can't fire into the next capture.
+            vm.stopHeartbeat()
             LocalSpeaker.shared.stop()
 
             // Let the audio session settle between speaking (.playback) and the

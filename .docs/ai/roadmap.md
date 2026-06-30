@@ -102,6 +102,11 @@ From the adversarially-verified review (40 kept / 34 confirmed; harness-deck rep
 - [x] `Semaphore(2-3)` around `_fire_one`; text-only path for scheduled fires — DONE (2026-06-20). `schedules.py`: `MAX_CONCURRENT_FIRES=3` + `_fire_sema` caps concurrent fires; `_fire_one` passes `tts_mode="none"` so fires skip redundant TTS synth (the push re-synthesizes via `/api/replay`). +2 tests (zero-synth + concurrency cap, mutation-verified).
 - [ ] Typed tool-output schema (unblocks richer ActionCard variants).
 
+### From on-device testing (2026-06-29)
+
+- [x] **Spoken filler repeated one phrase** for a run of same-family tool calls ("search… search… search" → identical sentence). FIXED: `narration.py` now has 6 variants per family (`NARRATION_PHRASES`) + a module-level `_last_phrase` anti-repeat picker (no consecutive duplicates), mirroring the iOS `FillerPhrases.ack()` pattern. Backend-only, restart-live. +3 tests (24 total green).
+- [ ] **Make narration resemble the actual action** (deferred from above) — instead of a generic per-family phrase, derive the spoken filler from the tool's real args/target (e.g. "reading config.py", "searching for the API key", "running the test suite"). Needs the structured tool name+args already on hand in `acp_client._process_update` threaded into `tool_narration`, plus care to keep it terse + speakable (strip paths to basenames, cap length). `complexity: M`, `tier_floor: senior`.
+
 ### From on-device testing (2026-05-29)
 
 - [x] History sheet stopped opening — FIXED (`efd121f`): three stacked `.sheet(isPresented:)` on MainView shadowed each other once the transcript sheet was added; collapsed to one `.sheet(item:)` enum.

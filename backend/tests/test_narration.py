@@ -6,9 +6,11 @@ internal tools return None so we stay quiet.
 """
 from __future__ import annotations
 
+from itertools import pairwise
+
 import pytest
 
-from app.narration import tool_narration
+from app.narration import NARRATION_PHRASES, tool_narration
 
 
 @pytest.mark.parametrize(
@@ -34,7 +36,7 @@ def test_web_family_narrates_looking_up_online(name):
 
 def test_weather_without_args_is_generic():
     phrase = tool_narration("weather")
-    assert phrase == "Checking the weather for you."
+    assert phrase in NARRATION_PHRASES["weather"]
 
 
 def test_weather_with_location_arg_enriches():
@@ -43,7 +45,7 @@ def test_weather_with_location_arg_enriches():
 
 
 def test_calendar_narrates_checking_calendar():
-    assert tool_narration("calendar") == "Checking your calendar."
+    assert tool_narration("calendar") in NARRATION_PHRASES["calendar"]
 
 
 @pytest.mark.parametrize("name", ["think", "todo_write", "update_plan", "memory_store"])
@@ -58,7 +60,24 @@ def test_empty_name_returns_none():
 
 def test_unknown_tool_gets_soft_fallback():
     phrase = tool_narration("some_obscure_widget_tool")
-    assert phrase == "Let me look into that."
+    assert phrase in NARRATION_PHRASES["fallback"]
+
+
+def test_repeated_same_family_calls_never_repeat_consecutively():
+    # The user's complaint: a run of same-family tool calls said one identical
+    # phrase. Every adjacent pair must now differ.
+    phrases = [tool_narration("search") for _ in range(20)]
+    assert all(a != b for a, b in pairwise(phrases))
+    # And it actually uses the variety, not just two alternating phrases.
+    assert len(set(phrases)) >= 3
+
+
+def test_every_family_phrase_reads_as_a_spoken_sentence():
+    for variants in NARRATION_PHRASES.values():
+        assert len(variants) >= 5  # 5-10 variants per family
+        for phrase in variants:
+            assert phrase[0].isupper()
+            assert phrase.endswith(".")
 
 
 def test_all_phrases_are_first_person_lowercase_starts_capitalized():

@@ -135,12 +135,18 @@ final class ConversationViewModel: ObservableObject {
     /// True while listening for a spoken answer — drives the card's mic affordance.
     @Published private(set) var listeningForAnswer = false
 
-    init(settings: AppSettings) {
+    /// Injected backend seam. `nil` in production → `api` builds a concrete
+    /// `HermesVoiceAPI` from live settings (unchanged behavior); tests pass a
+    /// fake `TurnTransport` to drive the turn state machine deterministically.
+    private let transport: TurnTransport?
+
+    init(settings: AppSettings, transport: TurnTransport? = nil) {
         self.settings = settings
+        self.transport = transport
     }
 
-    private var api: HermesVoiceAPI {
-        HermesVoiceAPI(baseURL: settings.backendURL, authToken: settings.authToken)
+    private var api: TurnTransport {
+        transport ?? HermesVoiceAPI(baseURL: settings.backendURL, authToken: settings.authToken)
     }
 
     // MARK: - Public actions

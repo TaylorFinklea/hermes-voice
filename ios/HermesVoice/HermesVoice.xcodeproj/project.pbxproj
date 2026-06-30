@@ -36,6 +36,7 @@
 		73ECBA6355C9F91885319907 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A69BCA5084B9B9B056B8C1 /* AppSettings.swift */; };
 		86507E87E889CD0251483AC3 /* AskHermesIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1311370320FAC18BD5A7A0D5 /* AskHermesIntent.swift */; };
 		873F3348A780063514F043BF /* ApprovalCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A078CC45E29218A46741F82 /* ApprovalCards.swift */; };
+		891DFE8340D363EEBDF27A12 /* TurnTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51BD37EAD5FEEC81E26B94F0 /* TurnTransport.swift */; };
 		8A22DCC4A0C9B7114A1D91C7 /* SchedulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD0611B5E35BB66D8E090EE /* SchedulesView.swift */; };
 		8B1D926D5BAB433FB8A570D1 /* Atoms.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2667D0C94428D99A956948D /* Atoms.swift */; };
 		8DFF9B2D9AF9974BAC9E1495 /* ActionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C333A49C789676D5541D80BA /* ActionCard.swift */; };
@@ -68,6 +69,7 @@
 		E55CFF716A03D5F3DE97E2F4 /* HermesVoiceWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4912C5CDAC7F3FE3421877C9 /* HermesVoiceWatchApp.swift */; };
 		F50BAB6AC1120116517B568B /* HermesVoiceWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = F4E7E039FC5FC213E5C95D08 /* HermesVoiceWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FA56CD4C25935FB38735B2AB /* BackendBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B9A5FC3DB9A7AB2383F5ED /* BackendBrowser.swift */; };
+		FA76068D592F804F972CB71C /* TurnStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E6EF046B91A5A67F89911C0 /* TurnStateMachineTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -138,10 +140,12 @@
 		4912C5CDAC7F3FE3421877C9 /* HermesVoiceWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesVoiceWatchApp.swift; sourceTree = "<group>"; };
 		4C3B91E63B245A2FBFF59B48 /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
 		506CD3DFC00ECED6AA2941B4 /* LocalTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTranscriber.swift; sourceTree = "<group>"; };
+		51BD37EAD5FEEC81E26B94F0 /* TurnTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnTransport.swift; sourceTree = "<group>"; };
 		53A4809563E9438638E7D768 /* HermesActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesActivityAttributes.swift; sourceTree = "<group>"; };
 		58B9A5FC3DB9A7AB2383F5ED /* BackendBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendBrowser.swift; sourceTree = "<group>"; };
 		5A078CC45E29218A46741F82 /* ApprovalCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalCards.swift; sourceTree = "<group>"; };
 		6C1A5E05B277907F32509348 /* AnswerParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnswerParsingTests.swift; sourceTree = "<group>"; };
+		6E6EF046B91A5A67F89911C0 /* TurnStateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnStateMachineTests.swift; sourceTree = "<group>"; };
 		71159F3B5BD1FDDED47FF2ED /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		715C6CEBF378666AD02ABB56 /* AudioSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionCoordinator.swift; sourceTree = "<group>"; };
 		7587FF7A3D13C302F4161182 /* SessionBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionBrowserView.swift; sourceTree = "<group>"; };
@@ -231,6 +235,7 @@
 				31E0B10C0BD079320DCE92EC /* FillerVerbosityTests.swift */,
 				7DF1E71B02F9D2626B26AD3A /* LocalSpeakerSpeakableTests.swift */,
 				B76A863A7D4ED684DE27D0C8 /* PairedTurnsTests.swift */,
+				6E6EF046B91A5A67F89911C0 /* TurnStateMachineTests.swift */,
 			);
 			path = HermesVoiceTests;
 			sourceTree = "<group>";
@@ -432,6 +437,7 @@
 				D837F79DE04128F22CC3C057 /* LocalVad.swift */,
 				71159F3B5BD1FDDED47FF2ED /* NotificationManager.swift */,
 				E262A46EED41E59D516CD6EB /* PhoneWatchBridge.swift */,
+				51BD37EAD5FEEC81E26B94F0 /* TurnTransport.swift */,
 				9E5656D26B4AA84AEC2D2C91 /* VoiceRecorder.swift */,
 			);
 			path = Services;
@@ -648,6 +654,7 @@
 				D750FF30F52D26DA799EE305 /* SessionBrowserView.swift in Sources */,
 				C98B8C1A809EFE9B7FE1B52D /* SettingsView.swift in Sources */,
 				218DF712A568866AAE836A91 /* TranscriptView.swift in Sources */,
+				891DFE8340D363EEBDF27A12 /* TurnTransport.swift in Sources */,
 				59704D53AD1D886AB38970DA /* VoiceRecorder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -662,6 +669,7 @@
 				D1A990C6136362088B186786 /* FillerVerbosityTests.swift in Sources */,
 				A71DBDA4A21F72808F2166CA /* LocalSpeakerSpeakableTests.swift in Sources */,
 				97BDEFDB11F53100801333EC /* PairedTurnsTests.swift in Sources */,
+				FA76068D592F804F972CB71C /* TurnStateMachineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

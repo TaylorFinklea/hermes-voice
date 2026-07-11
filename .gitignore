@@ -26,6 +26,9 @@ DerivedData/
 # Hermes Voice scratch
 /tmp-audio/
 
+# Isolated agent worktrees
+/.worktrees/
+
 # Design mockups from Claude Design (local reference only, not for version control)
 /Voice.zip
 /Voice/

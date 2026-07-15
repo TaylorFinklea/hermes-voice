@@ -54,16 +54,33 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// The UserDefaults suite backing every persisted property. Injected so
+    /// tests can use an isolated suite instead of `.standard`.
+    private let defaults: UserDefaults
+
+    /// The URL, auth token, and harness of the active backend profile. Kept
+    /// as top-level published properties (rather than reading through
+    /// `activeBackendProfile` everywhere) so existing `HermesVoiceAPI` call
+    /// sites keep compiling unchanged. Setting one of these updates the
+    /// active profile in `backendProfiles` and mirrors the legacy
+    /// `hv.backendURL` / `hv.authToken` / `hv.selectedHarness` keys that
+    /// `AskHermesIntent` reads directly.
     @Published var backendURL: String {
-        didSet { UserDefaults.standard.set(backendURL, forKey: Keys.backendURL) }
+        didSet {
+            defaults.set(backendURL, forKey: Keys.backendURL)
+            updateActiveProfile { $0.url = backendURL }
+        }
     }
 
     @Published var authToken: String {
-        didSet { UserDefaults.standard.set(authToken, forKey: Keys.authToken) }
+        didSet {
+            defaults.set(authToken, forKey: Keys.authToken)
+            updateActiveProfile { $0.authToken = authToken }
+        }
     }
 
     @Published var mode: Mode {
-        didSet { UserDefaults.standard.set(mode.rawValue, forKey: Keys.mode) }
+        didSet { defaults.set(mode.rawValue, forKey: Keys.mode) }
     }
 
     /// When true, Watch turns get their audio reply too: iPhone downloads
@@ -71,14 +88,14 @@ final class AppSettings: ObservableObject {
     /// WCSession.transferFile. When false (default), Watch shows text and
     /// haptic only.
     @Published var playReplyOnWatch: Bool {
-        didSet { UserDefaults.standard.set(playReplyOnWatch, forKey: Keys.playReplyOnWatch) }
+        didSet { defaults.set(playReplyOnWatch, forKey: Keys.playReplyOnWatch) }
     }
 
     /// Last time we successfully reached the backend's /health endpoint.
     /// Updated by any successful API call; displayed in Settings → Diagnostics
     /// so you can spot the moment your backend went unreachable.
     @Published var lastReachable: Date? {
-        didSet { UserDefaults.standard.set(lastReachable, forKey: Keys.lastReachable) }
+        didSet { defaults.set(lastReachable, forKey: Keys.lastReachable) }
     }
 
     func markReachable() { lastReachable = Date() }
@@ -105,27 +122,27 @@ final class AppSettings: ObservableObject {
     /// Has the user opted into receiving notifications for scheduled fires?
     /// Separate from iOS permission — this is the in-app on/off switch.
     @Published var notificationsEnabled: Bool {
-        didSet { UserDefaults.standard.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
+        didSet { defaults.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
     }
 
     /// When a scheduled fire arrives and the app is open, automatically
     /// play the reply audio (with a chime preamble). Off → just show the
     /// banner like a normal notification.
     @Published var autoPlayScheduledFires: Bool {
-        didSet { UserDefaults.standard.set(autoPlayScheduledFires, forKey: Keys.autoPlayScheduledFires) }
+        didSet { defaults.set(autoPlayScheduledFires, forKey: Keys.autoPlayScheduledFires) }
     }
 
     /// Play the chime before TTS during foreground auto-play. Off →
     /// audio starts cold (not recommended; "freak out" risk).
     @Published var foregroundChimeEnabled: Bool {
-        didSet { UserDefaults.standard.set(foregroundChimeEnabled, forKey: Keys.foregroundChimeEnabled) }
+        didSet { defaults.set(foregroundChimeEnabled, forKey: Keys.foregroundChimeEnabled) }
     }
 
     /// Last APNs device token we registered with the backend. Stored so
     /// the diagnostics view can show what's registered; not used to skip
     /// re-registration (NotificationManager handles that).
     @Published var lastApnsToken: String {
-        didSet { UserDefaults.standard.set(lastApnsToken, forKey: Keys.lastApnsToken) }
+        didSet { defaults.set(lastApnsToken, forKey: Keys.lastApnsToken) }
     }
 
     // ───── Onboarding ─────
@@ -134,7 +151,7 @@ final class AppSettings: ObservableObject {
     /// was entered or discovered and a connection test passed). Gates the app:
     /// false → OnboardingView, true → MainView.
     @Published var hasCompletedOnboarding: Bool {
-        didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: Keys.hasCompletedOnboarding) }
+        didSet { defaults.set(hasCompletedOnboarding, forKey: Keys.hasCompletedOnboarding) }
     }
 
     // ───── Voice ─────
@@ -142,7 +159,7 @@ final class AppSettings: ObservableObject {
     /// Selected ElevenLabs voice id. Empty → use the backend's configured
     /// default voice. Sent with each turn/replay request.
     @Published var selectedVoiceId: String {
-        didSet { UserDefaults.standard.set(selectedVoiceId, forKey: Keys.selectedVoiceId) }
+        didSet { defaults.set(selectedVoiceId, forKey: Keys.selectedVoiceId) }
     }
 
     /// Transcribe mic turns on-device (parakeet via FluidAudio) instead of
@@ -151,7 +168,7 @@ final class AppSettings: ObservableObject {
     /// ever fails) the turn falls back to the audio-upload path, so there's no
     /// regression. See `LocalTranscriber`.
     @Published var useOnDeviceSTT: Bool {
-        didSet { UserDefaults.standard.set(useOnDeviceSTT, forKey: Keys.useOnDeviceSTT) }
+        didSet { defaults.set(useOnDeviceSTT, forKey: Keys.useOnDeviceSTT) }
     }
 
     /// How much Harness talks while it works (on-device voice only). Gates the
@@ -159,7 +176,7 @@ final class AppSettings: ObservableObject {
     /// per-tool narration (default / today's behavior); chatty → adds a periodic
     /// "still working" heartbeat during long silent gaps.
     @Published var fillerVerbosity: FillerVerbosity {
-        didSet { UserDefaults.standard.set(fillerVerbosity.rawValue, forKey: Keys.fillerVerbosity) }
+        didSet { defaults.set(fillerVerbosity.rawValue, forKey: Keys.fillerVerbosity) }
     }
 
     // ───── Harness (which agent backs a turn) ─────
@@ -170,7 +187,10 @@ final class AppSettings: ObservableObject {
     /// `/api/harnesses`. Empty would mean the backend default, but we persist a
     /// concrete id so the picker reflects the active choice.
     @Published var selectedHarness: String {
-        didSet { UserDefaults.standard.set(selectedHarness, forKey: Keys.selectedHarness) }
+        didSet {
+            defaults.set(selectedHarness, forKey: Keys.selectedHarness)
+            updateActiveProfile { $0.selectedHarness = selectedHarness }
+        }
     }
 
     /// Short uppercase label for the active agent, for the state chips
@@ -204,10 +224,145 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    init() {
-        let d = UserDefaults.standard
-        self.backendURL = d.string(forKey: Keys.backendURL) ?? "http://127.0.0.1:8765"
-        self.authToken = d.string(forKey: Keys.authToken) ?? ""
+    // ───── Backend profiles ─────
+
+    /// Every saved backend connection, one per laptop/server. Always has at
+    /// least one entry — the active one — so `activeBackendProfile` never
+    /// needs to handle an empty collection.
+    @Published private(set) var backendProfiles: [BackendProfile]
+
+    /// The id of the profile currently backing `backendURL` / `authToken` /
+    /// `selectedHarness`.
+    @Published private(set) var activeProfileId: UUID
+
+    /// The profile currently backing `backendURL` / `authToken` /
+    /// `selectedHarness`.
+    var activeBackendProfile: BackendProfile {
+        backendProfiles.first(where: { $0.id == activeProfileId }) ?? backendProfiles[0]
+    }
+
+    /// Switches the active profile, restoring its URL/token/harness onto the
+    /// top-level published properties (and, via their `didSet`s, the legacy
+    /// mirror keys). Returns false for an unknown id, leaving state unchanged.
+    func activateProfile(id: UUID) -> Bool {
+        guard let profile = backendProfiles.first(where: { $0.id == id }) else { return false }
+        activeProfileId = id
+        backendURL = profile.url
+        authToken = profile.authToken
+        selectedHarness = profile.selectedHarness
+        persistActiveProfileId()
+        return true
+    }
+
+    /// Inserts a new profile or replaces the existing one with the same id.
+    /// Falls back to `BackendProfile.suggestedName(for:)` rather than
+    /// persisting a blank name. If the saved profile is the active one, the
+    /// top-level URL/token/harness properties are refreshed to match.
+    func saveProfile(_ profile: BackendProfile) {
+        var toSave = profile
+        if toSave.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            toSave.name = BackendProfile.suggestedName(for: toSave.url)
+        }
+
+        if let index = backendProfiles.firstIndex(where: { $0.id == toSave.id }) {
+            backendProfiles[index] = toSave
+        } else {
+            backendProfiles.append(toSave)
+        }
+        persistProfiles()
+
+        if toSave.id == activeProfileId {
+            backendURL = toSave.url
+            authToken = toSave.authToken
+            selectedHarness = toSave.selectedHarness
+        }
+    }
+
+    /// Deletes a profile. Returns false (no-op) when `id` is the active
+    /// profile, the only remaining profile, or unknown — there must always
+    /// be an active profile to fall back to.
+    func removeProfile(id: UUID) -> Bool {
+        guard backendProfiles.count > 1,
+              id != activeProfileId,
+              let index = backendProfiles.firstIndex(where: { $0.id == id })
+        else { return false }
+        backendProfiles.remove(at: index)
+        persistProfiles()
+        return true
+    }
+
+    /// Applies `mutate` to the active profile's record in `backendProfiles`
+    /// and persists the collection. Backs the `didSet`s of `backendURL` /
+    /// `authToken` / `selectedHarness` so those properties stay views onto
+    /// the active profile.
+    private func updateActiveProfile(_ mutate: (inout BackendProfile) -> Void) {
+        guard let index = backendProfiles.firstIndex(where: { $0.id == activeProfileId }) else { return }
+        mutate(&backendProfiles[index])
+        persistProfiles()
+    }
+
+    private func persistProfiles() {
+        guard let data = try? JSONEncoder().encode(backendProfiles) else { return }
+        defaults.set(data, forKey: Keys.backendProfiles)
+    }
+
+    private func persistActiveProfileId() {
+        defaults.set(activeProfileId.uuidString, forKey: Keys.activeBackendProfileId)
+    }
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let d = defaults
+
+        // Legacy single-backend values. Used as the migration source when no
+        // profile payload exists yet, and (for backendURL) to preserve the
+        // existing fresh-install onboarding gate below.
+        let legacyURL = d.string(forKey: Keys.backendURL) ?? "http://127.0.0.1:8765"
+        let legacyToken = d.string(forKey: Keys.authToken) ?? ""
+        let legacyHarness = d.string(forKey: Keys.selectedHarness) ?? "hermes"
+
+        let decodedProfiles: [BackendProfile]? = {
+            guard let data = d.data(forKey: Keys.backendProfiles),
+                  let decoded = try? JSONDecoder().decode([BackendProfile].self, from: data),
+                  !decoded.isEmpty
+            else { return nil }
+            return decoded
+        }()
+
+        let profiles: [BackendProfile]
+        let activeId: UUID
+        var needsMigrationPersist = false
+        if let decoded = decodedProfiles {
+            profiles = decoded
+            if let idString = d.string(forKey: Keys.activeBackendProfileId),
+               let uuid = UUID(uuidString: idString),
+               decoded.contains(where: { $0.id == uuid }) {
+                activeId = uuid
+            } else {
+                activeId = decoded[0].id
+            }
+        } else {
+            // No profile payload yet — migrate the legacy single-backend
+            // values (or fresh-install defaults) into exactly one profile.
+            let migrated = BackendProfile(
+                name: BackendProfile.suggestedName(for: legacyURL),
+                url: legacyURL,
+                authToken: legacyToken,
+                selectedHarness: legacyHarness
+            )
+            profiles = [migrated]
+            activeId = migrated.id
+            needsMigrationPersist = true
+        }
+
+        self.backendProfiles = profiles
+        self.activeProfileId = activeId
+
+        let active = profiles.first(where: { $0.id == activeId }) ?? profiles[0]
+        self.backendURL = active.url
+        self.authToken = active.authToken
+        self.selectedHarness = active.selectedHarness
+
         let raw = d.string(forKey: Keys.mode) ?? Mode.audio.rawValue
         self.mode = Mode(rawValue: raw) ?? .audio
         self.lastReachable = d.object(forKey: Keys.lastReachable) as? Date
@@ -227,13 +382,16 @@ final class AppSettings: ObservableObject {
         self.useOnDeviceSTT = d.object(forKey: Keys.useOnDeviceSTT) as? Bool ?? true
         let fillerRaw = d.string(forKey: Keys.fillerVerbosity) ?? FillerVerbosity.normal.rawValue
         self.fillerVerbosity = FillerVerbosity(rawValue: fillerRaw) ?? .normal
-        self.selectedHarness = d.string(forKey: Keys.selectedHarness) ?? "hermes"
         // Onboarding shows on a fresh install (default URL + flag unset). Treat
         // an already-configured non-default backend as onboarded so upgraders
         // aren't bounced back through onboarding.
-        let savedURL = d.string(forKey: Keys.backendURL) ?? "http://127.0.0.1:8765"
-        let configured = savedURL != "http://127.0.0.1:8765" && !savedURL.isEmpty
+        let configured = legacyURL != "http://127.0.0.1:8765" && !legacyURL.isEmpty
         self.hasCompletedOnboarding = d.bool(forKey: Keys.hasCompletedOnboarding) || configured
+
+        if needsMigrationPersist {
+            persistProfiles()
+            persistActiveProfileId()
+        }
     }
 
     private enum Keys {
@@ -251,5 +409,7 @@ final class AppSettings: ObservableObject {
         static let useOnDeviceSTT = "hv.useOnDeviceSTT"
         static let fillerVerbosity = "hv.fillerVerbosity"
         static let selectedHarness = "hv.selectedHarness"
+        static let backendProfiles = "hv.backendProfiles"
+        static let activeBackendProfileId = "hv.activeBackendProfileId"
     }
 }

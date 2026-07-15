@@ -2,6 +2,18 @@
 
 > Updated at the end of every work session. Read this first.
 
+## ACTIVE — Server profiles (2026-07-15, in flight)
+
+Branch: `server-profiles` (worktree `.worktrees/server-profiles`; main untouched). Plan: `docs/superpowers/plans/2026-07-10-server-profiles.md` · design: `docs/superpowers/specs/2026-07-10-server-profiles-design.md`. Executing via subagent-driven development; GPT-5.6 Sol = companion architect/adversarial reviewer. SDD ledger: `.superpowers/sdd/progress.md` (git-ignored).
+
+- [x] Task 1 — profile model + persistence + migration (`d4b8035`, 58/58 tests) — task review in flight
+- [ ] Task 2 — safe active-profile integration (VM switch guard, Siri, APNs, onboarding)
+- [ ] Task 3 — server management views (health-gated edits)
+- [ ] Task 4 — header picker + switch wiring
+- [?] Task 5 — on-device acceptance (USER, two laptops)
+
+Blockers: none. Open: Sol plan-review verdict pending (first pi run hit a 10-min tool timeout; retry running detached). Landmines: simulator here = iPhone 17 not plan's iPhone 16; xcodegen from worktree churns one cosmetic pbxproj group name — regenerate from primary checkout at merge. Beads: `bd` backlog = dolt repo (~`backlog-hermes-voice`), NOT present on this machine — prose roadmap still canonical here.
+
 ## Spoken conversational filler — ack + contextual narration (2026-06-26)
 
 User feedback, the real reason they don't use it: a turn is SILENT while the agent works → feels broken even when fast. Fix = spoken filler (see [[voice-perceived-latency-needs-spoken-filler]]). Designed via judged design workflow (`w8y7ffq3k`); built + adversarially reviewed (`wmedfcx0d` — both halves APPROVE, every risk-checklist item PASS). Tone = warm/casual/first-person; scope = full (user choices).

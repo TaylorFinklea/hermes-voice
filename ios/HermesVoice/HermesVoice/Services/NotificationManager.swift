@@ -68,6 +68,7 @@ final class NotificationManager: NSObject, ObservableObject {
     /// in flight.
     func stopForegroundPlayback() {
         guard arrivalInFlight else { return }
+        print("scheduled-fire foreground auto-play stopped (backend switch)")
         arrivalTask?.cancel()
         arrivalPlayer?.stop()
     }
@@ -96,6 +97,12 @@ final class NotificationManager: NSObject, ObservableObject {
     func handleAPNsToken(_ deviceToken: Data) {
         let hex = deviceToken.map { String(format: "%02hhx", $0) }.joined()
         guard let settings else { return }
+        // Cache the token at RECEIPT — not only after a successful
+        // registration. Otherwise a failed first registration would leave
+        // `lastApnsToken` empty, and a later profile switch (which reads that
+        // cached token via `registerSavedDeviceWithActiveBackendIfNeeded`)
+        // couldn't register the device with the new backend at all.
+        settings.lastApnsToken = hex
         registerToken(hex, settings: settings)
     }
 
@@ -146,6 +153,14 @@ final class NotificationManager: NSObject, ObservableObject {
         guard let settings else { return }
         let token = settings.lastApnsToken
         Task { @MainActor in
+            // Wait out any in-flight registration BEFORE the DELETE. Otherwise
+            // a stale in-flight POST to the PREVIOUS backend could complete
+            // AFTER our unregister and silently re-register the old backend.
+            // Same single-attempt wait `registerSavedDeviceWithActiveBackendIfNeeded`
+            // performs before its POST — no queue, just don't race the DELETE.
+            while self.registrationInFlight {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
             if !token.isEmpty {
                 let oldAPI = HermesVoiceAPI(baseURL: previous.url, authToken: previous.authToken)
                 do {
@@ -178,7 +193,8 @@ final class NotificationManager: NSObject, ObservableObject {
                 bundleId: bundleId,
                 environment: env
             )
-            settings.lastApnsToken = token
+            // Token is already cached at receipt (see `handleAPNsToken`), so
+            // no need to re-store it here on success.
         } catch {
             // Backend down or token rejected. Token cached locally so
             // we retry next launch; no error UI here (this is silent).

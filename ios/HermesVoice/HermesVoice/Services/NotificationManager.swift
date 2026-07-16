@@ -389,6 +389,14 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // task is spawned; every exit path here — including the early guard
         // below — must clear it.
         defer { arrivalInFlight = false }
+        // A task cancelled before it starts still runs cooperatively, so a
+        // backend switch landing in the gap between spawn and first suspension
+        // would otherwise still acquire the audio session, show the Live
+        // Activity, and blip the chime. Bail before any of that side-effects.
+        // (No suspension point exists between here and the chime — acquire /
+        // showSpeaking are synchronous — so this single pre-start check covers
+        // the whole pre-chime window.)
+        guard !Task.isCancelled else { return }
         // Play the chime (if enabled), then re-synthesize TTS for the reply and
         // play it. Gated to idle in willPresent, so we own the audio session +
         // Live Activity here without fighting the conversation player.

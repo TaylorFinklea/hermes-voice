@@ -18,6 +18,13 @@ final class RegistrarHub {
 
     private(set) var events: [Event] = []
 
+    /// The factory-supplied auth-token snapshot each recorded call was built
+    /// with, kept in lockstep with `events`. Asserted so a regression that
+    /// constructs the registrar from LIVE settings instead of the (url, token)
+    /// snapshot bound at flow start is caught — e.g. a DELETE of the previous
+    /// backend that reads the now-active token rather than the previous one.
+    private(set) var authTokens: [String] = []
+
     /// Return true to SUSPEND this call until `release(index:)` resumes it.
     var parkPolicy: (Event) -> Bool = { _ in false }
     /// Return a non-nil error to make this call throw (after being recorded),
@@ -27,9 +34,10 @@ final class RegistrarHub {
     private var parked: [Int: CheckedContinuation<Void, Error>] = [:]
     private var countWaiters: [(threshold: Int, cont: CheckedContinuation<Void, Never>)] = []
 
-    func record(_ event: Event) async throws {
+    func record(_ event: Event, authToken: String) async throws {
         let index = events.count
         events.append(event)
+        authTokens.append(authToken)
         countWaiters = countWaiters.filter { waiter in
             if events.count >= waiter.threshold {
                 waiter.cont.resume()
@@ -65,12 +73,16 @@ final class RegistrarHub {
 /// spans all per-backend clients a switch constructs.
 private struct FakeDeviceRegistrar: DeviceRegistering {
     let url: String
+    /// The auth-token snapshot the factory built this registrar with. Recorded
+    /// on every call so a test can assert each client was bound to its backend's
+    /// snapshot, not whatever `settings.authToken` happens to hold live.
+    let authToken: String
     let hub: RegistrarHub
 
     func registerDevice(
         token: String, platform: String, bundleId: String, environment: String
     ) async throws -> HermesVoiceAPI.DeviceResponse {
-        try await hub.record(.init(kind: .register, url: url, token: token))
+        try await hub.record(.init(kind: .register, url: url, token: token), authToken: authToken)
         return HermesVoiceAPI.DeviceResponse(
             token: token, platform: platform, bundleId: bundleId,
             environment: environment, registeredAt: 0, lastSeenAt: 0
@@ -78,7 +90,7 @@ private struct FakeDeviceRegistrar: DeviceRegistering {
     }
 
     func unregisterDevice(token: String) async throws {
-        try await hub.record(.init(kind: .unregister, url: url, token: token))
+        try await hub.record(.init(kind: .unregister, url: url, token: token), authToken: authToken)
     }
 }
 
@@ -105,8 +117,8 @@ final class NotificationSwitchTests: XCTestCase {
 
     private func makeManager() -> NotificationManager {
         let hub = hub!
-        let manager = NotificationManager(makeRegistrar: { url, _ in
-            FakeDeviceRegistrar(url: url, hub: hub)
+        let manager = NotificationManager(makeRegistrar: { url, authToken in
+            FakeDeviceRegistrar(url: url, authToken: authToken, hub: hub)
         })
         manager.configure(settings: settings)
         return manager
@@ -141,6 +153,13 @@ final class NotificationSwitchTests: XCTestCase {
             .init(kind: .unregister, url: urlA, token: "t1"),    // DELETE previous with its recorded token
             .init(kind: .register, url: urlB, token: "t1"),      // register the new active backend
         ])
+        // Each registrar must be built from the (url, token) snapshot bound at
+        // its flow's start, not live settings. The DELETE of A is the tell: it
+        // must carry A's token ("tok-a") even though the active backend has
+        // already flipped to B ("tok-b"). A regression that read live settings
+        // for the unregister would build the old-backend client with "tok-b".
+        XCTAssertEqual(hub.authTokens, ["tok-a", "tok-a", "tok-b"],
+                       "registrar auth tokens must come from the per-flow snapshot, not live settings")
     }
 
     // MARK: - Token-rotation coalescing while a POST is in flight

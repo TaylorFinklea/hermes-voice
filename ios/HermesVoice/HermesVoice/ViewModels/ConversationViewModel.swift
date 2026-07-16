@@ -272,6 +272,11 @@ final class ConversationViewModel: ObservableObject {
                 // (502/503/422/401…) means the turn may have already executed; fall
                 // through to a loud failure rather than silently re-firing a write.
                 print("[HermesVoice] /api/audio/stream \(code) → single-shot fallback")
+                // A cancelled/switched-away turn must not re-POST the old audio:
+                // `api` resolves from the CURRENT active profile, so without this
+                // guard a turn cancelled by switchBackend could fire the fallback
+                // against the NEW backend.
+                guard !Task.isCancelled else { VoiceRecorder.discard(url); return }
                 await self.sendAudioFallback(url: url, sessionId: currentSession, voiceId: voiceId, tts: ttsMode, harness: harnessId)
             } catch {
                 VoiceRecorder.discard(url)
@@ -329,6 +334,11 @@ final class ConversationViewModel: ObservableObject {
             // single-shot retry is safe. Other statuses fall through to the
             // recover-or-fail path below (never silently re-fire a maybe-run turn).
             print("[HermesVoice] /api/text/stream \(code) → single-shot fallback")
+            // A cancelled/switched-away turn must not re-POST the old prompt:
+            // `api` resolves from the CURRENT active profile, so without this
+            // guard a turn cancelled by switchBackend could fire the fallback
+            // against the NEW backend.
+            guard !Task.isCancelled else { return }
             await sendTextFallback(trimmed, sessionId: sessionId, voiceId: voiceId, tts: tts, harness: harness)
         } catch {
             if !Task.isCancelled {
@@ -343,7 +353,10 @@ final class ConversationViewModel: ObservableObject {
                         sessionId: sessionId,
                         turnUserText: trimmed
                     )
-                    if !recovered { failTurn(error) }
+                    // Re-check cancellation after the recovery await: a turn
+                    // cancelled by switchBackend mid-recovery must not paint a
+                    // NEW turn's state red via failTurn.
+                    if !recovered, !Task.isCancelled { failTurn(error) }
                 }
             }
         }
@@ -479,7 +492,10 @@ final class ConversationViewModel: ObservableObject {
             return
         }
         // Stream ended cleanly with no audio leg (e.g. TTS disabled).
-        if state == .thinking || state == .sending { state = .idle }
+        // Guard on cancellation: a turn cancelled mid-recovery (e.g.
+        // switchBackend cancelled this task while the History await above was
+        // in flight) must NOT settle a NEW turn's `.thinking` back to `.idle`.
+        if !Task.isCancelled, state == .thinking || state == .sending { state = .idle }
     }
 
     /// Defensive recovery for a real-world stream edge case: Hermes can finish
@@ -717,6 +733,13 @@ final class ConversationViewModel: ObservableObject {
     /// is unknown.
     @discardableResult
     func switchBackend(to profileID: UUID) -> Bool {
+        // `activateProfile` precedes the `reset()` below deliberately — an
+        // adjudicated deviation from the design doc's "clear before activate"
+        // wording. A FAILED activation (unknown id) must not have already
+        // destroyed conversation state, so we gate the whole switch on it
+        // succeeding first. This method is fully synchronous on the MainActor,
+        // so there is no interleaving window between activate and reset for
+        // another turn to observe a half-switched state.
         guard canSwitchBackend, settings.activateProfile(id: profileID) else { return false }
         // A completed stream's task may still be unwinding when we get here
         // (`.done` flips state to `.idle` BEFORE the task itself finishes) —

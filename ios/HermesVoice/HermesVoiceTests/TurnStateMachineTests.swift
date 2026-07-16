@@ -31,9 +31,61 @@ final class TurnStateMachineTests: XCTestCase {
         private(set) var sendTextCalled = false
         private(set) var getSessionCalled = false
 
+        // MARK: race-test gates (inert unless a test opts in)
+
+        /// Gate `getSession`: when true, it signals entry then suspends until
+        /// `releaseGetSession()` before returning `sessionResult`. Lets a test
+        /// cancel/switch the turn while History recovery is mid-flight.
+        var gateGetSession = false
+        private var getSessionDidEnter = false
+        private var getSessionEnteredCont: CheckedContinuation<Void, Never>?
+        private var getSessionReleaseCont: CheckedContinuation<Void, Never>?
+
+        func awaitGetSessionEntered() async {
+            if getSessionDidEnter { return }
+            await withCheckedContinuation { getSessionEnteredCont = $0 }
+        }
+        func releaseGetSession() {
+            getSessionReleaseCont?.resume()
+            getSessionReleaseCont = nil
+        }
+
+        /// Gate `streamText` from the Nth call (1-based): a gated call stores its
+        /// continuation and never yields, so the turn stays suspended in
+        /// `.thinking` until `releaseStream()` finishes it — throwing
+        /// `gateStreamError` when set, else finishing cleanly.
+        var gateStreamFromCall: Int?
+        var gateStreamError: Error?
+        private var streamCallCount = 0
+        private var streamDidEnter = false
+        private var streamEnteredCont: CheckedContinuation<Void, Never>?
+        private var streamReleaseCont: AsyncThrowingStream<HermesVoiceAPI.TurnEvent, Error>.Continuation?
+
+        func awaitStreamEntered() async {
+            if streamDidEnter { return }
+            await withCheckedContinuation { streamEnteredCont = $0 }
+        }
+        func releaseStream() {
+            if let gateStreamError {
+                streamReleaseCont?.finish(throwing: gateStreamError)
+            } else {
+                streamReleaseCont?.finish()
+            }
+            streamReleaseCont = nil
+        }
+
         func streamText(
             _ text: String, sessionId: String?, voiceId: String?, tts: String?, harness: String?, mode: String?
         ) -> AsyncThrowingStream<HermesVoiceAPI.TurnEvent, Error> {
+            streamCallCount += 1
+            if let gateStreamFromCall, streamCallCount >= gateStreamFromCall {
+                return AsyncThrowingStream { continuation in
+                    self.streamReleaseCont = continuation
+                    self.streamDidEnter = true
+                    self.streamEnteredCont?.resume()
+                    self.streamEnteredCont = nil
+                }
+            }
             let events = textEvents
             let error = streamError
             return AsyncThrowingStream { continuation in
@@ -67,6 +119,12 @@ final class TurnStateMachineTests: XCTestCase {
 
         func getSession(id: String) async throws -> HermesVoiceAPI.HistoryDetail {
             getSessionCalled = true
+            if gateGetSession {
+                getSessionDidEnter = true
+                getSessionEnteredCont?.resume()
+                getSessionEnteredCont = nil
+                await withCheckedContinuation { getSessionReleaseCont = $0 }
+            }
             switch sessionResult {
             case .success(let d): return d
             case .failure(let e): throw e
@@ -236,5 +294,98 @@ final class TurnStateMachineTests: XCTestCase {
         XCTAssertFalse(vm.canSwitchBackend)
         XCTAssertFalse(vm.switchBackend(to: other.id))
         XCTAssertEqual(settings.activeBackendProfile.id, originalId)
+    }
+
+    /// Regression for the generation-safe teardown fix: a turn task cancelled by
+    /// `switchBackend` while its History recovery await is in flight must NOT
+    /// clobber a *new* turn's `.thinking` back to `.idle`, nor append the reply
+    /// it recovered for the now-abandoned conversation.
+    func testRecoveryRaceDoesNotClobberNewTurnState() async throws {
+        let settings = makeSettings()
+        let other = BackendProfile(name: "Laptop B", url: "https://b.example:8765", authToken: "b", selectedHarness: "codex")
+        settings.saveProfile(other)
+
+        let fake = FakeTransport()
+        // Turn 1: a clean stream carrying a session id but no assistant → the
+        // History-recovery path runs. Its `getSession` is gated so we can
+        // interleave a switch while recovery is blocked.
+        fake.textEvents = [.done(sessionId: "s-1")]
+        fake.gateGetSession = true
+        fake.sessionResult = .success(try decode(
+            HermesVoiceAPI.HistoryDetail.self,
+            """
+            {"session_id":"s-1","source":"hermes","started_at":0,"messages":[
+              {"role":"user","text":"q1","timestamp":1},
+              {"role":"assistant","text":"SHOULD NOT APPEAR","timestamp":2}
+            ]}
+            """
+        ))
+        // The 2nd streamText call (the "new turn") is gated open so it parks in
+        // `.thinking` while the cancelled turn 1 unwinds.
+        fake.gateStreamFromCall = 2
+
+        let vm = ConversationViewModel(settings: settings, transport: fake)
+
+        // Turn 1 drives to the recovery await and blocks in `getSession`.
+        let turn1 = Task { await vm.sendText("q1") }
+        await fake.awaitGetSessionEntered()
+
+        // `.done` already settled state to `.idle`, so the switch is allowed and
+        // cancels turn 1's task.
+        XCTAssertTrue(vm.switchBackend(to: other.id))
+
+        // New turn: `sendText` drives `.thinking`; its gated stream keeps it there.
+        let turn2 = Task { await vm.sendText("q2") }
+        await fake.awaitStreamEntered()
+        XCTAssertEqual(vm.state, .thinking)
+
+        // Release turn 1's recovery. The cancelled task must leave state alone.
+        fake.releaseGetSession()
+        await turn1.value
+
+        XCTAssertEqual(vm.state, .thinking, "cancelled turn's recovery tail must not settle a live turn to idle")
+        XCTAssertFalse(vm.messages.contains { $0.text == "SHOULD NOT APPEAR" },
+                       "cancelled turn must not append its recovered assistant reply")
+        XCTAssertEqual(vm.messages.map(\.text), ["q2"])
+
+        // Cleanup: let turn 2 finish so its task doesn't outlive the test.
+        fake.releaseStream()
+        await turn2.value
+    }
+
+    /// Companion to the 404 single-shot fallback: a turn cancelled before the
+    /// fallback fires must NOT re-POST the prompt (which `api` would send to the
+    /// CURRENT — possibly switched — backend). Asserts the observable contract:
+    /// no `sendText` single-shot call happens for a cancelled 404 turn.
+    ///
+    /// NOTE: with an `AsyncThrowingStream`-backed fake, task cancellation
+    /// terminates the stream, so this exercises the "cancelled turn does not
+    /// re-POST" behavior without pinning down whether the `!Task.isCancelled`
+    /// guard or the stream-termination path suppressed it — both are correct and
+    /// both are what the fix protects. The guard remains defense-in-depth for the
+    /// real SSE transport, where a buffered 404 can race a URLSession cancel.
+    func testCancelledTurnDoesNotFireSingleShotFallback() async throws {
+        let fake = FakeTransport()
+        // The 1st (only) streamText call is gated, then released with a 404.
+        fake.gateStreamFromCall = 1
+        fake.gateStreamError = HermesVoiceAPI.APIError.httpStatus(404, "")
+        // If the fallback ever fired, this would be delivered and observed.
+        fake.sendTextResult = .success(try decode(
+            HermesVoiceAPI.TurnResponse.self,
+            #"{"session_id":"s-9","user_text":"q","assistant_text":"SHOULD NOT POST","tool_calls":[]}"#
+        ))
+        let vm = ConversationViewModel(settings: makeSettings(), transport: fake)
+
+        let turn = Task { await vm.sendText("q") }
+        await fake.awaitStreamEntered()
+        XCTAssertEqual(vm.state, .thinking)
+
+        // Cancel the in-flight turn, THEN surface the 404.
+        vm.cancelCurrentTurn()
+        fake.releaseStream()
+        await turn.value
+
+        XCTAssertFalse(fake.sendTextCalled, "a cancelled 404 turn must not re-POST via the single-shot fallback")
+        XCTAssertFalse(vm.messages.contains { $0.text == "SHOULD NOT POST" })
     }
 }

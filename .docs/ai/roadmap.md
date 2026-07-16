@@ -59,11 +59,11 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 
 > Self-contained items any agent can execute.
 
-### Server-profiles follow-ups (2026-07-16; from the dual whole-branch reviews — none merge-blocking, all logged deliberately)
+### Server-profiles follow-ups — DONE (merged to main 2026-07-16, Sol-converged)
 
-- **Test seams + regressions for the switch seam** — inject API/token into `NotificationManager` (cover `handleBackendSwitch` orchestration + token-rotation coalescing + the CAS record removal), route `PhoneWatchBridge`'s `(sessionId, profileId)` marker through injected defaults (cover profile-drop + `isRelaying`), extract `loadHarnesses` fallback logic for testability. `tier_floor: senior` · `complexity: M`
-- **`attach()` continuity gap** — `ConversationViewModel.attach` still writes `settings.selectedHarness` directly; it must keep bypassing the reset (attach carries a session by design) but should invalidate Siri/Watch continuity like other routing changes. `tier_floor: junior` · `complexity: S`
-- **Small polish batch** (one commit): Siri treats the loopback-default URL as unconfigured (pre-onboarding message regression); set `arrivalInFlight` in `willPresent` before spawning (stop-playback race); reword `registerSavedDeviceWithActiveBackendIfNeeded`'s stale "silently dropping" doc line; `@ObservedObject` (not `@StateObject`) for shared singletons in MainView; editor zero-harness `""` save guard; drop/use the no-op `onSaved` callback; auto-clear `harnessApplyHint`; assert on discarded `switchBackend` result in `applyHarnessChange`; collapse the 3-4× profile persists per activate if ever hot. `tier_floor: junior` · `complexity: S`
+- [x] Test seams + switch-seam regressions — `DeviceRegistering` protocol/factory seam, pure `resolveRelaySession`/`nextRelayMarker`/`resolveHarnessFallback` extractions, marker via injected defaults; 29 new regression tests (APNs order/coalescing/CAS, Watch relay incl. route-snapshot interleaving, harness fallback). 101 iOS tests total.
+- [x] `attach()` continuity — invalidates Siri/Watch continuity + cancels stale turn task on adoption; Siri session & Watch marker now HARNESS-aware (route snapshots bound at flow start — closes the same-UUID suspended-response class Sol found).
+- [x] Polish batch a-h — incl. Siri configured-detection via `hasCompletedOnboarding` (not URL equality; genuine-localhost users keep Siri) and arrival pre-start cancellation. Deferred: 3-4× profile persists per activate (harmless; revisit only if hot).
 
 ### APNs v2 — multi-backend push identity (queued 2026-07-15; move to beads when the dolt backlog DB is wired on this machine)
 

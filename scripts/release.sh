@@ -17,9 +17,10 @@
 # This is a MONOREPO: the iOS project lives under ios/HermesVoice. The script
 # handles the path juggling; run it from anywhere in the repo.
 #
-# App Store Connect API auth — the real key id + issuer id live in a gitignored
-# .release-ios.env at the repo root (copy .release-ios.env.example and fill it
-# in) so they stay out of the public repo. You can also just export these:
+# App Store Connect API auth — supplied by Bitwarden Secrets Manager via the
+# managed wrapper (repo is registered in ~/.config/bitwarden-secrets/projects.json):
+#   bws-project run -- ./scripts/release.sh --build
+# The BWS project holds the identifiers; exporting them manually also works:
 #   ASC_API_KEY_ID     — key ID matching the .p8 filename
 #   ASC_API_ISSUER_ID  — App Store Connect issuer UUID
 #   ASC_API_KEY_PATH   — path to the .p8 key (default: ~/.appstoreconnect/AuthKey_<KEY_ID>.p8)
@@ -61,15 +62,13 @@ done
 # ---------- preflight ----------
 command -v xcodegen >/dev/null || fail "xcodegen not found (brew install xcodegen)"
 
-# Real ASC identifiers live in a gitignored .release-ios.env (out of the public
-# repo); fall back to anything already exported in the shell.
-[[ -f "$REPO_ROOT/.release-ios.env" ]] && source "$REPO_ROOT/.release-ios.env"
-
+# ASC identifiers arrive in the environment — normally injected by the managed
+# Bitwarden wrapper (bws-project run -- ./scripts/release.sh), or exported by hand.
 ASC_KEY_ID="${ASC_API_KEY_ID:-}"
 ASC_ISSUER="${ASC_API_ISSUER_ID:-}"
 ASC_KEY_PATH="${ASC_API_KEY_PATH:-$HOME/.appstoreconnect/AuthKey_${ASC_KEY_ID}.p8}"
 
-[[ -n "$ASC_KEY_ID" && -n "$ASC_ISSUER" ]] || fail "Missing ASC_API_KEY_ID / ASC_API_ISSUER_ID. Copy .release-ios.env.example to .release-ios.env and fill it in (gitignored), or export them."
+[[ -n "$ASC_KEY_ID" && -n "$ASC_ISSUER" ]] || fail "Missing ASC_API_KEY_ID / ASC_API_ISSUER_ID. Run via: bws-project run -- ./scripts/release.sh --build (repo is registered in Bitwarden Secrets Manager), or export them."
 [[ -f "$ASC_KEY_PATH" ]] || fail "ASC API key not found at $ASC_KEY_PATH. Set ASC_API_KEY_PATH or place the .p8 there."
 
 PROJECT_YML="$IOS_DIR/project.yml"

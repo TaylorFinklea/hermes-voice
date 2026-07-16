@@ -2,6 +2,20 @@ import Foundation
 import UIKit
 import UserNotifications
 
+/// The narrow slice of `HermesVoiceAPI` the registration/unregister flows use.
+/// Extracted so tests can inject a fake that records the ordered register /
+/// unregister calls (url + token) without a live network client. Mirrors the
+/// exact `HermesVoiceAPI` signatures so the real client conforms with an empty
+/// extension and production construction is unchanged.
+protocol DeviceRegistering {
+    func registerDevice(
+        token: String, platform: String, bundleId: String, environment: String
+    ) async throws -> HermesVoiceAPI.DeviceResponse
+    func unregisterDevice(token: String) async throws
+}
+
+extension HermesVoiceAPI: DeviceRegistering {}
+
 /// Coordinates iOS push-notification permission, APNs device-token
 /// registration, and foreground arrival handling.
 ///
@@ -15,6 +29,14 @@ final class NotificationManager: NSObject, ObservableObject {
 
     private weak var settings: AppSettings?
     private weak var conversation: ConversationViewModel?
+
+    /// Factory that builds the device-registration client for a given
+    /// (baseURL, authToken). Defaults to the real `HermesVoiceAPI`; tests inject
+    /// a fake to record register/unregister calls. Injecting the factory (rather
+    /// than a single client) mirrors production: each registration/unregister
+    /// binds a client to a specific backend snapshot, not one shared instance.
+    private let makeRegistrar: (_ baseURL: String, _ authToken: String) -> DeviceRegistering
+
     private var registrationInFlight = false
     /// The token each backend ACTUALLY holds, keyed by backend URL — distinct
     /// from `settings.lastApnsToken`, which is the single last token RECEIVED
@@ -56,7 +78,16 @@ final class NotificationManager: NSObject, ObservableObject {
         let wasForeground: Bool
     }
 
-    private override init() {
+    /// - Parameter makeRegistrar: registration-client factory, defaulting to the
+    ///   real `HermesVoiceAPI` construction the flows previously did inline.
+    ///   Tests inject a fake; `shared` uses the default so production is
+    ///   unchanged.
+    init(
+        makeRegistrar: @escaping (_ baseURL: String, _ authToken: String) -> DeviceRegistering = {
+            HermesVoiceAPI(baseURL: $0, authToken: $1)
+        }
+    ) {
+        self.makeRegistrar = makeRegistrar
         super.init()
         UNUserNotificationCenter.current().delegate = self
     }
@@ -117,6 +148,13 @@ final class NotificationManager: NSObject, ObservableObject {
     /// Called by AppDelegate when APNs hands us a device token.
     func handleAPNsToken(_ deviceToken: Data) {
         let hex = deviceToken.map { String(format: "%02hhx", $0) }.joined()
+        handleAPNsToken(hex: hex)
+    }
+
+    /// The delegate path after hex conversion. Internal (not private) so tests
+    /// can deliver a token by its hex string without constructing the raw
+    /// `Data` the OS hands `handleAPNsToken(_:)` — behavior is identical.
+    func handleAPNsToken(hex: String) {
         guard let settings else { return }
         // Cache the token at RECEIPT — not only after a successful
         // registration. Otherwise a failed first registration would leave
@@ -205,7 +243,7 @@ final class NotificationManager: NSObject, ObservableObject {
             // registration that just completed (and its coalescing tail).
             let token = self.registeredTokens[previous.url] ?? settings.lastApnsToken
             if !token.isEmpty {
-                let oldAPI = HermesVoiceAPI(baseURL: previous.url, authToken: previous.authToken)
+                let oldAPI = self.makeRegistrar(previous.url, previous.authToken)
                 do {
                     try await oldAPI.unregisterDevice(token: token)
                     // `previous` no longer holds THIS token — but only drop the
@@ -252,9 +290,7 @@ final class NotificationManager: NSObject, ObservableObject {
     }
 
     private func performRegistration(token: String, target: RegistrationTarget) async {
-        let api = HermesVoiceAPI(
-            baseURL: target.url, authToken: target.authToken
-        )
+        let api = makeRegistrar(target.url, target.authToken)
         let bundleId = Bundle.main.bundleIdentifier ?? "dev.finklea.harnessvoice"
         // iOS apps built with debug provisioning use the APNs sandbox env;
         // TestFlight + App Store use production. The TARGET_OS_SIMULATOR

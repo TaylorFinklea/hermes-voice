@@ -328,6 +328,43 @@ struct SettingsView: View {
         harnessApplyHint = ""
     }
 
+    /// Outcome of the `loadHarnesses` fallback decision, lifted out of the view
+    /// so the branch logic is unit-testable in isolation from the network fetch
+    /// and the gated apply.
+    enum HarnessFallbackOutcome: Equatable {
+        /// The stored harness is still offered and available — no write.
+        case keepCurrent
+        /// The stored harness is gone; route this fallback id through the gated
+        /// apply path (same-id switch + continuity invalidation).
+        case applyFallback(String)
+        /// The stored harness is gone but a live turn / hands-free / Watch relay
+        /// is in flight (or the list is empty) — write nothing; retry next load.
+        case deferApply
+    }
+
+    /// Pure fallback decision for `loadHarnesses`. Mirrors the original inline
+    /// guard exactly: never apply from an empty list; keep the current harness
+    /// when it's still offered AND available; otherwise fall back to the first
+    /// available agent (or the first entry) — but only when the routing gate is
+    /// eligible, else defer.
+    static func resolveHarnessFallback(
+        stored: String,
+        available: [HermesVoiceAPI.HarnessOption],
+        gateEligible: Bool
+    ) -> HarnessFallbackOutcome {
+        // Never apply an empty harness — an empty list means the backend
+        // returned nothing this load; defer and retry rather than clobber.
+        guard !available.isEmpty else { return .deferApply }
+        if available.contains(where: { $0.harnessId == stored && $0.available }) {
+            return .keepCurrent
+        }
+        // Stored harness no longer offered/available: first available, else first.
+        guard let fallback = available.first(where: { $0.available }) ?? available.first else {
+            return .deferApply
+        }
+        return gateEligible ? .applyFallback(fallback.harnessId) : .deferApply
+    }
+
     private func loadHarnesses() async {
         harnessesLoading = true
         defer { harnessesLoading = false }
@@ -343,20 +380,24 @@ struct SettingsView: View {
             // continuity invalidation), NOT a direct `settings.selectedHarness`
             // write that would send a live session id under the fallback agent
             // with Watch/Siri guards blind (the profile UUID is unchanged).
-            if !harnesses.isEmpty,
-               !harnesses.contains(where: { $0.harnessId == settings.selectedHarness && $0.available }),
-               let fallback = harnesses.first(where: { $0.available }) ?? harnesses.first {
-                if BackendRouting.canApply(
+            let outcome = Self.resolveHarnessFallback(
+                stored: settings.selectedHarness,
+                available: harnesses,
+                gateEligible: BackendRouting.canApply(
                     conversation: conversation,
                     conversationMode: conversationMode,
                     watchBridge: watchBridge
-                ) {
-                    applyHarnessChange(fallback.harnessId)
-                }
-                // else: a live turn / hands-free / Watch relay is in flight —
-                // DEFER; write nothing this load and leave the stored selection
-                // so the next Settings load or user action retries, rather than
-                // silently re-routing an active session.
+                )
+            )
+            switch outcome {
+            case .keepCurrent, .deferApply:
+                // deferApply: a live turn / hands-free / Watch relay is in flight
+                // (or the list is empty) — write nothing this load and leave the
+                // stored selection so the next Settings load or user action
+                // retries, rather than silently re-routing an active session.
+                break
+            case .applyFallback(let id):
+                applyHarnessChange(id)
             }
         } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code == 401 {
             harnessesError = "Auth token required — add it under Backend above."

@@ -17,6 +17,11 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
     private weak var settings: AppSettings?
     private let wcSession: WCSession?
 
+    /// The UserDefaults suite the relay marker persists to. Injected (default
+    /// `.standard`) so tests can round-trip the pair against an isolated suite
+    /// without touching the shared domain. Production uses `.standard`.
+    private let defaults: UserDefaults
+
     /// The (sessionId, profileId) pair the Watch's current known session was
     /// last relayed under (nil = no relayed session yet). Stores BOTH the
     /// session id we handed the Watch AND the profile it was created under.
@@ -41,21 +46,58 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
 
     private var relayMarker: RelayMarker? {
         get {
-            let d = UserDefaults.standard
-            guard let sid = d.string(forKey: Self.relayedSessionIdKey), !sid.isEmpty,
-                  let pidString = d.string(forKey: Self.relayedSessionProfileKey),
-                  let pid = UUID(uuidString: pidString)
-            else { return nil }
-            return RelayMarker(sessionId: sid, profileId: pid)
+            Self.loadRelayMarker(from: defaults)
+                .map { RelayMarker(sessionId: $0.sessionId, profileId: $0.profileId) }
         }
         set {
-            let d = UserDefaults.standard
-            d.set(newValue?.sessionId, forKey: Self.relayedSessionIdKey)
-            d.set(newValue?.profileId.uuidString, forKey: Self.relayedSessionProfileKey)
+            Self.saveRelayMarker(
+                newValue.map { (sessionId: $0.sessionId, profileId: $0.profileId) },
+                to: defaults
+            )
         }
     }
     private static let relayedSessionIdKey = "hv.watch.sessionID"
     private static let relayedSessionProfileKey = "hv.watch.sessionProfileID"
+
+    /// Loads the persisted (sessionId, profileId) relay marker from `defaults`,
+    /// or nil when either key is absent/blank/unparseable. Pure over `defaults`
+    /// so tests round-trip it against an isolated suite; the instance property
+    /// and `clearRelayMarker()` both route through here.
+    static func loadRelayMarker(
+        from defaults: UserDefaults
+    ) -> (sessionId: String, profileId: UUID)? {
+        guard let sid = defaults.string(forKey: relayedSessionIdKey), !sid.isEmpty,
+              let pidString = defaults.string(forKey: relayedSessionProfileKey),
+              let pid = UUID(uuidString: pidString)
+        else { return nil }
+        return (sessionId: sid, profileId: pid)
+    }
+
+    /// Persists (or, with nil, clears) the relay marker pair to `defaults`.
+    static func saveRelayMarker(
+        _ marker: (sessionId: String, profileId: UUID)?, to defaults: UserDefaults
+    ) {
+        defaults.set(marker?.sessionId, forKey: relayedSessionIdKey)
+        defaults.set(marker?.profileId.uuidString, forKey: relayedSessionProfileKey)
+    }
+
+    /// Pure relay-session decision, lifted out of the WCSession-coupled path so
+    /// it's unit-testable. Returns the Watch's `incoming` session id to forward
+    /// ONLY when it's non-empty AND the stored marker matches it on BOTH fields
+    /// — same session id we last handed the Watch AND the profile active now.
+    /// nil means "drop the stale id, start a fresh conversation" (a blank
+    /// incoming id, a session from a different laptop, or a delivery that was
+    /// never confirmed). Mirrors the original inline guard exactly.
+    static func resolveRelaySession(
+        incoming: String?,
+        stored: (sessionId: String, profileId: UUID)?,
+        activeProfileId: UUID
+    ) -> String? {
+        guard let sid = incoming, !sid.isEmpty else { return nil }
+        guard let stored, stored.sessionId == sid, stored.profileId == activeProfileId
+        else { return nil }
+        return sid
+    }
 
     /// Clears the relayed-session marker so the next Watch turn starts a fresh
     /// conversation. Called by the unified backend-apply path when routing
@@ -70,7 +112,8 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
     /// so a profile switch can't land mid-relay.
     @Published private(set) var isRelaying = false
 
-    override init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         if WCSession.isSupported() {
             self.wcSession = WCSession.default
         } else {
@@ -98,18 +141,16 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
             return
         }
         let metadata = file.metadata ?? [:]
-        var sessionId = (metadata["session_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         // Forward the Watch's session id ONLY when it matches the stored pair:
         // the same session id we last handed the Watch AND the profile active
         // now. Any mismatch — a session id from a different laptop, or one whose
         // delivery to the Watch was never confirmed — is dropped, starting a
         // fresh conversation instead of sending laptop A's session id to laptop B.
-        if let sid = sessionId {
-            let marker = relayMarker
-            if marker?.sessionId != sid || marker?.profileId != settings.activeBackendProfile.id {
-                sessionId = nil
-            }
-        }
+        let sessionId = Self.resolveRelaySession(
+            incoming: metadata["session_id"] as? String,
+            stored: relayMarker.map { (sessionId: $0.sessionId, profileId: $0.profileId) },
+            activeProfileId: settings.activeBackendProfile.id
+        )
 
         let api = HermesVoiceAPI(
             baseURL: settings.backendURL, authToken: settings.authToken

@@ -47,6 +47,19 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
         let harness: String
     }
 
+    /// Immutable snapshot of the route a single Watch relay targets, bound at
+    /// the START of that relay (mirrors `NotificationManager.RegistrationTarget`).
+    /// Every route-dependent read in the relay — the session-resolve guard, the
+    /// upload's harness, and the marker tag written after the response returns —
+    /// goes to THIS snapshot, never live `settings`, so a switch that flips the
+    /// active profile/harness mid-upload can't misattribute the stale in-flight
+    /// response to the new route. (url/token are already effectively snapshotted
+    /// by the `HermesVoiceAPI` construction below.)
+    private struct RelayRoute {
+        let profileId: UUID
+        let harness: String
+    }
+
     private var relayMarker: RelayMarker? {
         get {
             Self.loadRelayMarker(from: defaults)
@@ -109,6 +122,27 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
         return sid
     }
 
+    /// Pure marker-tagging decision, lifted out of the WCSession-coupled path so
+    /// it's unit-testable. Given the route SNAPSHOT bound at relay start and the
+    /// session id the backend returned, produces the (sessionId, profileId,
+    /// harness) triple to persist — tagged with the SNAPSHOT route, NEVER live
+    /// settings — so a switch that flips the active profile/harness mid-flight
+    /// can't misattribute a stale in-flight response to the new route. Returns
+    /// nil when the response carries no session id (empty), signalling "leave the
+    /// stored marker untouched" (mirrors WatchSession.handleResponse leaving its
+    /// id untouched on an empty response). Chained with `resolveRelaySession`
+    /// under the post-switch route, the two functions reproduce the relay
+    /// interleaving end-to-end: this tags the stale response with the OLD route,
+    /// and the next turn's resolve drops it on the triple mismatch.
+    static func nextRelayMarker(
+        routeProfileId: UUID,
+        routeHarness: String,
+        responseSessionId: String
+    ) -> (sessionId: String, profileId: UUID, harness: String)? {
+        guard !responseSessionId.isEmpty else { return nil }
+        return (sessionId: responseSessionId, profileId: routeProfileId, harness: routeHarness)
+    }
+
     /// Clears the relayed-session marker so the next Watch turn starts a fresh
     /// conversation. Called by the unified backend-apply path when routing
     /// changes (the profile UUID may be unchanged while the endpoint/agent
@@ -150,6 +184,14 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
             await replyError("App not ready — open Harness Voice on your phone.")
             return
         }
+        // Bind the route snapshot ONCE at relay start — every route-dependent
+        // read below (resolve, upload harness, marker tag) goes to this, never
+        // live `settings`, so a mid-flight switch can't redirect or misattribute
+        // this in-flight relay. See RelayRoute's doc comment.
+        let route = RelayRoute(
+            profileId: settings.activeBackendProfile.id,
+            harness: settings.selectedHarness
+        )
         let metadata = file.metadata ?? [:]
         // Forward the Watch's session id ONLY when it matches the stored triple:
         // the same session id we last handed the Watch AND the profile AND the
@@ -160,8 +202,8 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
         let sessionId = Self.resolveRelaySession(
             incoming: metadata["session_id"] as? String,
             stored: relayMarker.map { (sessionId: $0.sessionId, profileId: $0.profileId, harness: $0.harness) },
-            activeProfileId: settings.activeBackendProfile.id,
-            activeHarness: settings.selectedHarness
+            activeProfileId: route.profileId,
+            activeHarness: route.harness
         )
 
         let api = HermesVoiceAPI(
@@ -172,17 +214,22 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
                 fileURL: file.fileURL,
                 mimeType: "audio/m4a",
                 sessionId: sessionId,
-                harness: settings.selectedHarness
+                harness: route.harness
             )
             // Advance the marker to the (sessionId, profileId, harness) we're
-            // about to hand the Watch — but only once there's actually a session
-            // id to compare against next time (empty sessionId means
-            // WatchSession.handleResponse leaves its stored id untouched too).
-            if !response.sessionId.isEmpty {
+            // about to hand the Watch — tagged with the route SNAPSHOT bound at
+            // relay start, NEVER live settings, so a switch that flipped the
+            // active profile/harness during the upload can't misattribute this
+            // stale response to the new route. nil (empty response sessionId)
+            // leaves the stored marker untouched, mirroring
+            // WatchSession.handleResponse leaving its id untouched.
+            if let next = Self.nextRelayMarker(
+                routeProfileId: route.profileId,
+                routeHarness: route.harness,
+                responseSessionId: response.sessionId
+            ) {
                 relayMarker = RelayMarker(
-                    sessionId: response.sessionId,
-                    profileId: settings.activeBackendProfile.id,
-                    harness: settings.selectedHarness
+                    sessionId: next.sessionId, profileId: next.profileId, harness: next.harness
                 )
             }
             await replyToWatch(response: response)

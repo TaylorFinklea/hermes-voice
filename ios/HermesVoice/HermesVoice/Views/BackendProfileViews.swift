@@ -1,5 +1,44 @@
 import SwiftUI
 
+/// Shared backend-routing apply path. Every UI that can change active routing —
+/// the main-header picker, the editor's active-profile save, and the Settings
+/// Agent picker — funnels its eligibility check and post-apply side effects
+/// through here, so the gate and the cross-device continuity invalidation can't
+/// drift between call sites.
+enum BackendRouting {
+    /// The single composite eligibility predicate. A routing change is allowed
+    /// only when the conversation is at rest (`canSwitchBackend`), hands-free
+    /// conversation mode isn't running, and no Watch relay is in flight — any of
+    /// those would be stranded or wrongly rerouted by a switch.
+    @MainActor
+    static func canApply(
+        conversation: ConversationViewModel,
+        conversationMode: ConversationModeController,
+        watchBridge: PhoneWatchBridge
+    ) -> Bool {
+        conversation.canSwitchBackend && !conversationMode.isActive && !watchBridge.isRelaying
+    }
+
+    /// The single post-apply orchestration run on every routing-affecting apply.
+    /// `previous` is the pre-change profile snapshot; `endpointChanged` is true
+    /// only when the url or token changed (which alone drives the active-only
+    /// APNs handoff). Cross-device continuity (Siri session + Watch relay marker)
+    /// is invalidated on ANY routing-affecting apply — including a same-profile
+    /// harness-only change, where the profile UUID is unchanged but the agent
+    /// (and thus the conversation) is not the one those markers were created for.
+    @MainActor
+    static func applySideEffects(previous: BackendProfile, endpointChanged: Bool) {
+        let notifications = NotificationManager.shared
+        notifications.clearArrival()
+        notifications.stopForegroundPlayback()
+        if endpointChanged {
+            notifications.handleBackendSwitch(previous: previous)
+        }
+        SiriSession.clear()
+        PhoneWatchBridge.shared.clearRelayMarker()
+    }
+}
+
 /// The main-header control for switching the active backend profile. Renders
 /// the existing agent title on top (unchanged from the old static header)
 /// with the active server's name + a chevron beneath it — the whole thing is
@@ -49,7 +88,7 @@ struct BackendProfilePicker: View {
         }
         .disabled(!canSwitch)
         .accessibilityLabel("Active server: \(settings.activeBackendProfile.name)")
-        .accessibilityHint(canSwitch ? "" : "Finish or cancel the current turn before switching servers.")
+        .accessibilityHint(canSwitch ? "" : "Finish or cancel the current turn, hands-free session, or Watch activity before switching servers.")
     }
 }
 
@@ -61,6 +100,7 @@ struct BackendProfilePicker: View {
 struct BackendProfileManagerView: View {
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var conversation: ConversationViewModel
+    @EnvironmentObject var conversationMode: ConversationModeController
 
     @State private var editingProfile: BackendProfile?
     @State private var showingAdd = false
@@ -132,11 +172,13 @@ struct BackendProfileManagerView: View {
             BackendProfileEditorView(existingProfile: nil, onSaved: { _ in })
                 .environmentObject(settings)
                 .environmentObject(conversation)
+                .environmentObject(conversationMode)
         }
         .sheet(item: $editingProfile) { profile in
             BackendProfileEditorView(existingProfile: profile, onSaved: { _ in })
                 .environmentObject(settings)
                 .environmentObject(conversation)
+                .environmentObject(conversationMode)
         }
     }
 
@@ -224,6 +266,8 @@ struct BackendProfileEditorView: View {
 
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var conversation: ConversationViewModel
+    @EnvironmentObject var conversationMode: ConversationModeController
+    @StateObject private var watchBridge = PhoneWatchBridge.shared
     @Environment(\.dismiss) private var dismiss
 
     @State private var name = ""
@@ -318,9 +362,9 @@ struct BackendProfileEditorView: View {
                         }
                     }
 
-                    if isActiveProfile && !conversation.canSwitchBackend {
+                    if routingChanged && !eligibleToApply {
                         Section {
-                            Text("A turn is in progress on the active server. Finish or cancel it before saving changes here.")
+                            Text("A turn, hands-free session, or Watch relay is in progress on the active server. Finish or cancel it before saving routing changes here.")
                                 .font(HVFont.captionTiny)
                                 .foregroundStyle(HVColor.bronze)
                                 .listRowBackground(HVColor.creamSurface)
@@ -397,14 +441,51 @@ struct BackendProfileEditorView: View {
         existingProfile?.id == settings.activeBackendProfile.id
     }
 
+    /// The harness that will be persisted: the picked one, or (when the picker
+    /// was never touched) the existing profile's harness.
+    private var effectiveHarness: String {
+        selectedHarness.isEmpty ? (existingProfile?.selectedHarness ?? "") : selectedHarness
+    }
+
+    /// True when this edit changes the active profile's endpoint (url or token).
+    /// Only an endpoint change drives the active-only APNs handoff.
+    private var endpointChanged: Bool {
+        guard isActiveProfile, let existingProfile else { return false }
+        return trimmedURL != existingProfile.url || token != existingProfile.authToken
+    }
+
+    /// True when this edit changes the active profile's harness (agent).
+    private var harnessChanged: Bool {
+        guard isActiveProfile, let existingProfile else { return false }
+        return effectiveHarness != existingProfile.selectedHarness
+    }
+
+    /// A routing-affecting edit to the ACTIVE profile: endpoint OR harness
+    /// changed. These require the gate + switch teardown + orchestration; a
+    /// name-only change (or any edit to a non-active profile) does not.
+    private var routingChanged: Bool { endpointChanged || harnessChanged }
+
+    /// The shared composite gate (conversation at rest, no hands-free, no Watch
+    /// relay), evaluated the same way as the header picker and Agent picker.
+    private var eligibleToApply: Bool {
+        BackendRouting.canApply(
+            conversation: conversation,
+            conversationMode: conversationMode,
+            watchBridge: watchBridge
+        )
+    }
+
     private var canSave: Bool {
-        !trimmedName.isEmpty && !trimmedURL.isEmpty && checkPassed && !saving
-            && (!isActiveProfile || conversation.canSwitchBackend)
+        // Name may be blank — it auto-fills from the URL host at save (E1).
+        // URL + a passed connection check stay required. Routing-affecting
+        // edits to the active profile additionally require the composite gate.
+        !trimmedURL.isEmpty && checkPassed && !saving
+            && (!routingChanged || eligibleToApply)
     }
 
     private var saveDisabledHint: String {
-        guard isActiveProfile, !conversation.canSwitchBackend else { return "" }
-        return "Finish or cancel the current turn before saving changes to the active server."
+        guard routingChanged, !eligibleToApply else { return "" }
+        return "Finish or cancel the current turn, hands-free session, or Watch activity before saving routing changes to the active server."
     }
 
     private func sectionHeader(_ text: String) -> some View {
@@ -457,23 +538,37 @@ struct BackendProfileEditorView: View {
         saving = true
         saveError = nil
         defer { saving = false }
+        // Name defaults from the URL host when left blank (E1); `saveProfile`
+        // applies the same fallback, but resolve here so `onSaved` sees it too.
+        let resolvedName = trimmedName.isEmpty
+            ? BackendProfile.suggestedName(for: trimmedURL)
+            : trimmedName
         let profile = BackendProfile(
             id: existingProfile?.id ?? UUID(),
-            name: trimmedName,
+            name: resolvedName,
             url: trimmedURL,
             authToken: token,
-            selectedHarness: selectedHarness.isEmpty ? (existingProfile?.selectedHarness ?? "") : selectedHarness
+            selectedHarness: effectiveHarness
         )
-        settings.saveProfile(profile)
-        if isActiveProfile {
-            // Re-activating the same id routes the credential change through
-            // the same teardown (stale-turn cancel + conversation reset +
-            // lastReachable clear) as a real switch, rather than inventing a
-            // separate reset path.
+
+        if routingChanged {
+            // Routing-affecting edit to the ACTIVE profile. Snapshot the
+            // pre-change profile BEFORE saveProfile mutates it, persist, then
+            // route through switchBackend (same id → stale-turn cancel +
+            // conversation reset + lastReachable clear) and the shared
+            // orchestration. `endpointChanged` gates the APNs handoff; a
+            // harness-only change still invalidates cross-device continuity.
+            let previous = settings.activeBackendProfile
+            settings.saveProfile(profile)
             guard conversation.switchBackend(to: profile.id) else {
                 saveError = "Saved, but couldn't apply — a turn just started. Try Save again."
                 return
             }
+            BackendRouting.applySideEffects(previous: previous, endpointChanged: endpointChanged)
+        } else {
+            // Name-only change, or any edit to a non-active profile: a plain
+            // save with no reset and no orchestration.
+            settings.saveProfile(profile)
         }
         onSaved(profile)
         dismiss()

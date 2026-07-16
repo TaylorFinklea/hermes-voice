@@ -63,6 +63,16 @@ struct SiriSession {
         defaults.set(Date(), forKey: tsKey)
         defaults.set(profileID, forKey: profileKey)
     }
+
+    /// Drops the persisted Siri session so the next Siri turn starts fresh.
+    /// Called by the unified backend-apply path on any routing change: the
+    /// active profile's UUID can be unchanged while its endpoint/agent changed,
+    /// so the profile-id guard in `load` isn't enough to invalidate continuity.
+    static func clear(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: idKey)
+        defaults.removeObject(forKey: tsKey)
+        defaults.removeObject(forKey: profileKey)
+    }
 }
 
 /// The Siri-invocable intent. Users say "Hey Siri, ask Harness <question>".

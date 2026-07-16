@@ -3,9 +3,14 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var conversation: ConversationViewModel
+    @EnvironmentObject var conversationMode: ConversationModeController
+    @StateObject private var watchBridge = PhoneWatchBridge.shared
     @Environment(\.dismiss) private var dismiss
 
     @State private var showSchedules = false
+    /// Brief message shown under the Agent picker when a harness change is
+    /// blocked by the routing gate (a turn / hands-free / Watch relay in flight).
+    @State private var harnessApplyHint = ""
     @State private var voices: [HermesVoiceAPI.VoiceOption] = []
     @State private var voicesLoading = false
     @State private var voicesError = ""
@@ -72,6 +77,7 @@ struct SettingsView: View {
                 BackendProfileManagerView()
                     .environmentObject(settings)
                     .environmentObject(conversation)
+                    .environmentObject(conversationMode)
             } label: {
                 HStack {
                     Label("Manage servers", systemImage: "server.rack")
@@ -217,7 +223,12 @@ struct SettingsView: View {
 
     private var harnessSection: some View {
         Section {
-            Picker("Agent", selection: $settings.selectedHarness) {
+            // A user-driven harness change on the ACTIVE profile is a routing
+            // change: route it through the same gate + switch teardown +
+            // continuity invalidation as the header picker, rather than writing
+            // `settings.selectedHarness` directly (which would send a live
+            // session id under the new agent with Watch/Siri guards blind).
+            Picker("Agent", selection: harnessSelection) {
                 ForEach(harnesses) { h in
                     Text(h.available ? h.name : "\(h.name) (unavailable)")
                         .tag(h.harnessId)
@@ -226,6 +237,12 @@ struct SettingsView: View {
             .pickerStyle(.navigationLink)
             .tint(HVColor.amber)
             .listRowBackground(HVColor.creamSurface)
+            if !harnessApplyHint.isEmpty {
+                Text(harnessApplyHint)
+                    .font(HVFont.captionTiny)
+                    .foregroundStyle(HVColor.bronze)
+                    .listRowBackground(HVColor.creamSurface)
+            }
             if harnessesLoading {
                 HStack(spacing: 8) {
                     ProgressView().tint(HVColor.amber)
@@ -266,6 +283,41 @@ struct SettingsView: View {
         }
     }
 
+    /// Binding backing the Agent picker. `get` always reports the persisted
+    /// harness (so a blocked change visually reverts on the next render); `set`
+    /// routes the change through the gated apply path.
+    private var harnessSelection: Binding<String> {
+        Binding(
+            get: { settings.selectedHarness },
+            set: { applyHarnessChange($0) }
+        )
+    }
+
+    /// Applies a user-driven Agent change on the active profile through the
+    /// shared routing gate. On success: sets the harness (which updates the
+    /// active profile), runs a same-id switch (fresh conversation against the
+    /// same endpoint / new agent), and invalidates cross-device continuity.
+    /// On a gate failure: does nothing (the picker's `get` reverts the visual
+    /// selection) and surfaces a brief hint.
+    private func applyHarnessChange(_ newHarness: String) {
+        guard newHarness != settings.selectedHarness else { return }
+        guard BackendRouting.canApply(
+            conversation: conversation,
+            conversationMode: conversationMode,
+            watchBridge: watchBridge
+        ) else {
+            harnessApplyHint = "Finish or cancel the current turn, hands-free session, or Watch activity before switching agents."
+            return
+        }
+        let previous = settings.activeBackendProfile
+        settings.selectedHarness = newHarness   // updates the active profile's harness
+        conversation.switchBackend(to: previous.id)   // same-id switch → fresh conversation
+        // Harness-only change: no endpoint change, so no APNs handoff — but
+        // Siri/Watch continuity still invalidates (same profile, new agent).
+        BackendRouting.applySideEffects(previous: previous, endpointChanged: false)
+        harnessApplyHint = ""
+    }
+
     private func loadHarnesses() async {
         harnessesLoading = true
         defer { harnessesLoading = false }
@@ -274,7 +326,12 @@ struct SettingsView: View {
             harnesses = try await api.listHarnesses()
             harnessesError = ""
             // If the persisted selection is no longer offered (e.g. a CLI was
-            // uninstalled), fall back to the first available agent.
+            // uninstalled), fall back to the first available agent. This writes
+            // `settings.selectedHarness` DIRECTLY — deliberately: it's an
+            // automatic correction, not a user switch, so it persists through
+            // the active profile without the gate/switch teardown (there's no
+            // live conversation to protect on a fresh Settings load, and the
+            // selected agent genuinely no longer exists on this backend).
             if !harnesses.isEmpty,
                !harnesses.contains(where: { $0.harnessId == settings.selectedHarness && $0.available }) {
                 if let fallback = harnesses.first(where: { $0.available }) ?? harnesses.first {

@@ -73,6 +73,7 @@ struct MainView: View {
                     SettingsView()
                         .environmentObject(settings)
                         .environmentObject(conversation)
+                        .environmentObject(conversationMode)
                 case .history:
                     HistoryView()
                         .environmentObject(settings)
@@ -90,6 +91,7 @@ struct MainView: View {
                         BackendProfileManagerView()
                             .environmentObject(settings)
                             .environmentObject(conversation)
+                            .environmentObject(conversationMode)
                     }
                     .tint(HVColor.amber)
                     .preferredColorScheme(.dark)
@@ -201,20 +203,23 @@ struct MainView: View {
     /// land), and never while relaying to the Watch (switching out from
     /// under a live relay would strand it).
     private var canSwitchBackendProfile: Bool {
-        conversation.canSwitchBackend && !conversationMode.isActive && !watchBridge.isRelaying
+        BackendRouting.canApply(
+            conversation: conversation,
+            conversationMode: conversationMode,
+            watchBridge: watchBridge
+        )
     }
 
     /// Selecting the already-active profile is a no-op. Otherwise capture
     /// `previous` before any mutation (switching flips
-    /// `settings.activeBackendProfile`), and only run the APNs handoff +
-    /// notification cleanup once the switch actually lands.
+    /// `settings.activeBackendProfile`), and only run the shared post-apply
+    /// orchestration once the switch actually lands. A header switch always
+    /// moves to a different profile, so the endpoint always changed.
     private func selectBackendProfile(_ profile: BackendProfile) {
         guard profile.id != settings.activeBackendProfile.id else { return }
         let previous = settings.activeBackendProfile
         guard conversation.switchBackend(to: profile.id) else { return }
-        notifications.clearArrival()
-        notifications.stopForegroundPlayback()
-        notifications.handleBackendSwitch(previous: previous)
+        BackendRouting.applySideEffects(previous: previous, endpointChanged: true)
     }
 
     /// "New conversation" is available only at rest (idle/error) and only when

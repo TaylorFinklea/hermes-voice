@@ -5,15 +5,6 @@ struct SettingsView: View {
     @EnvironmentObject var conversation: ConversationViewModel
     @Environment(\.dismiss) private var dismiss
 
-    // Local mirrors so typing in the URL field doesn't cascade through
-    // @Published → UserDefaults.write → view re-render on every keystroke.
-    // We commit on submit and on dismiss.
-    @State private var draftURL: String = ""
-    @State private var draftToken: String = ""
-    @State private var hydrated = false
-
-    @State private var healthResult: String = ""
-    @State private var pinging = false
     @State private var showSchedules = false
     @State private var voices: [HermesVoiceAPI.VoiceOption] = []
     @State private var voicesLoading = false
@@ -59,7 +50,6 @@ struct SettingsView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
-                        commit()
                         dismiss()
                     }
                     .font(HVFont.body.weight(.semibold))
@@ -69,13 +59,6 @@ struct SettingsView: View {
             .toolbarBackground(HVColor.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .onAppear {
-                if !hydrated {
-                    draftURL = settings.backendURL
-                    draftToken = settings.authToken
-                    hydrated = true
-                }
-            }
             .task { await loadVoices() }
             .task { await loadHarnesses() }
         }
@@ -85,24 +68,29 @@ struct SettingsView: View {
 
     private var backendSection: some View {
         Section {
-            HVField(label: "URL", value: $draftURL, placeholder: "https://host:8765",
-                    onSubmit: { commit() })
-            HVField(label: "Token", value: $draftToken, placeholder: "(required by your backend)",
-                    secure: true, onSubmit: { commit() })
-            Button {
-                Task { await ping() }
+            NavigationLink {
+                BackendProfileManagerView()
+                    .environmentObject(settings)
+                    .environmentObject(conversation)
             } label: {
                 HStack {
-                    Text("Ping backend")
+                    Label("Manage servers", systemImage: "server.rack")
                         .font(HVFont.body)
-                        .foregroundStyle(HVColor.amber)
+                        .foregroundStyle(HVColor.cream)
                     Spacer()
-                    if pinging { ProgressView().tint(HVColor.amber) }
+                    Text(settings.activeBackendProfile.name)
+                        .font(HVFont.captionTiny)
+                        .foregroundStyle(HVColor.creamDim)
                 }
             }
-            .listRowBackground(HVColor.amberGlow.opacity(0.5))
+            .tint(HVColor.amber)
+            .listRowBackground(HVColor.creamSurface)
         } header: {
             sectionHeader("BACKEND")
+        } footer: {
+            Text("Add, edit, or remove saved backend connections.")
+                .font(HVFont.captionTiny)
+                .foregroundStyle(HVColor.creamDim)
         }
     }
 
@@ -487,13 +475,6 @@ struct SettingsView: View {
                     accent: lastSeenIsStale ? HVColor.bronze : HVColor.amber)
             HVKVRow(label: "Build", value: Self.buildInfo)
             HVKVRow(label: "ATS", value: Self.atsInfo)
-            if !healthResult.isEmpty {
-                Text(healthResult)
-                    .font(HVFont.captionTiny)
-                    .foregroundStyle(HVColor.creamDim)
-                    .textSelection(.enabled)
-                    .listRowBackground(HVColor.creamSurface)
-            }
         } header: {
             sectionHeader("DIAGNOSTICS")
         } footer: {
@@ -526,12 +507,6 @@ struct SettingsView: View {
         return Date().timeIntervalSince(date) > 600
     }
 
-    private func commit() {
-        let trimmed = draftURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed != settings.backendURL { settings.backendURL = trimmed }
-        if draftToken != settings.authToken { settings.authToken = draftToken }
-    }
-
     private static let buildInfo: String = {
         guard let exe = Bundle.main.executableURL,
               let attrs = try? FileManager.default.attributesOfItem(atPath: exe.path),
@@ -552,58 +527,9 @@ struct SettingsView: View {
         if local { return "local only" }
         return "configured but restrictive"
     }()
-
-    private func ping() async {
-        commit()
-        pinging = true
-        defer { pinging = false }
-        let api = HermesVoiceAPI(baseURL: settings.backendURL, authToken: settings.authToken)
-        do {
-            let json = try await api.health()
-            let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted])
-            healthResult = String(data: data, encoding: .utf8) ?? "<empty>"
-            settings.markReachable()
-        } catch {
-            healthResult = "Error: \(error.localizedDescription)"
-        }
-    }
 }
 
 // MARK: - Brand-styled form rows
-
-private struct HVField: View {
-    let label: String
-    @Binding var value: String
-    var placeholder: String = ""
-    var secure: Bool = false
-    var onSubmit: () -> Void = {}
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(HVFont.bodyDim)
-                .foregroundStyle(HVColor.creamDim)
-                .frame(width: 60, alignment: .leading)
-            if secure {
-                SecureField(placeholder, text: $value)
-                    .font(HVFont.body)
-                    .foregroundStyle(HVColor.cream)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onSubmit(onSubmit)
-            } else {
-                TextField(placeholder, text: $value)
-                    .font(HVFont.body)
-                    .foregroundStyle(HVColor.cream)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .onSubmit(onSubmit)
-            }
-        }
-        .listRowBackground(HVColor.creamSurface)
-    }
-}
 
 private struct HVToggleRow: View {
     let label: String

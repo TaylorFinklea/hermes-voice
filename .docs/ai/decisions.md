@@ -188,3 +188,13 @@
 
 **Rationale**: Centralizing tool phrases in the backend gives context ("in your area" from the structured location arg) with one source of truth and no double-speak coordination, while the iOS-local ack gives the fastest possible time-to-first-sound. Keeping narration on its own SSE channel (out of `reply_parts`) means it can never corrupt the authoritative reply or trip the empty-reply guard. Phased + additive: new event type, legacy/mock paths simply never emit it. The judged design workflow (`w8y7ffq3k`) ranked agent-narrated lowest (reliability 2/5); this path scored highest on reliability + time-to-first-sound.
 
+## [2026-07-15] APNs with multiple backends: active-only registration for v1
+
+**Context**: Server profiles let one phone talk to two laptops. Sol's adversarial plan review found APNs pushes carry no backend identity (`backend/app/push.py` payload = `schedule_id` + `session_id` only), so with the device token registered on both laptops, a push from the *inactive* laptop would resume/replay its session against the *active* one — wrong backend, broken replay. The server-profiles design as written ("register the token with the newly active backend", "no backend API changes") cannot route two pushing laptops safely.
+
+**Decision**: v1 is **active-only**: on a profile switch, best-effort unregister the device token from the previous backend, then register with the new one. Only the active laptop can deliver pushes. Registration/unregistration failures stay logged-and-non-blocking per the design.
+
+**Alternatives considered**: (a) Multi-backend identity — add source/profile identity to device registration + push payload and route/switch on tap; correct but a backend API change the design forbade, and larger iOS routing work. (b) Defer — register everywhere, never unregister; zero work but mis-routes pushes silently.
+
+**Rationale**: User decision (2026-07-15). Active-only preserves the explicit-switching philosophy and the no-backend-change constraint using the existing `/api/devices` unregister endpoint; multi-backend identity is deliberately queued as a v2 backlog item rather than scope-creeping v1.
+

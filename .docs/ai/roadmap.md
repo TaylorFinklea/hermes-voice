@@ -58,6 +58,14 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 
 > Self-contained items any agent can execute.
 
+### APNs v2 — multi-backend push identity (queued 2026-07-15; move to beads when the dolt backlog DB is wired on this machine)
+
+- **Scope**: Let BOTH laptops deliver pushes correctly. Add source/profile identity to device registration + push payload (backend change, overrides the v1 "no backend change" constraint per `decisions.md [2026-07-15]`); iOS stores which profile a push came from and routes the tap — either auto-switching to that profile (only when at rest) or showing a "from <server>" disambiguation. Foreground auto-play must replay against the source backend, not the active one.
+- **Files**: `backend/app/push.py` (payload), `backend/app/main.py` + `models.py` (device registration fields), `ios .../Services/NotificationManager.swift`, `ios .../Views/MainView.swift` (arrival routing), `ios .../Models/AppSettings.swift` (profile lookup by server identity).
+- **Acceptance**: with profiles A+B both registered, a schedule fired on the non-active laptop delivers a push whose tap resumes against ITS backend (or clearly offers the switch); foreground auto-play replays from the source backend.
+- **Verify**: `uv run --project backend pytest` green (+ push-payload identity test); `xcodebuild … test` green; on-device two-laptop push test.
+- `tier_floor`: senior · `complexity`: L
+
 ### Scheduled recurring Hermes messages
 
 **Status**: Scoped — see `.docs/ai/phases/schedules-spec.md` for full spec. Phase A is the next executable chunk.

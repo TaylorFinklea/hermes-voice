@@ -243,13 +243,17 @@ final class AppSettings: ObservableObject {
 
     /// Switches the active profile, restoring its URL/token/harness onto the
     /// top-level published properties (and, via their `didSet`s, the legacy
-    /// mirror keys). Returns false for an unknown id, leaving state unchanged.
+    /// mirror keys). Also clears `lastReachable`, since that diagnostic
+    /// describes the previous server, not the one just switched to. Returns
+    /// false for an unknown id, leaving state unchanged.
+    @discardableResult
     func activateProfile(id: UUID) -> Bool {
         guard let profile = backendProfiles.first(where: { $0.id == id }) else { return false }
         activeProfileId = id
         backendURL = profile.url
         authToken = profile.authToken
         selectedHarness = profile.selectedHarness
+        lastReachable = nil
         persistActiveProfileId()
         return true
     }
@@ -281,6 +285,7 @@ final class AppSettings: ObservableObject {
     /// Deletes a profile. Returns false (no-op) when `id` is the active
     /// profile, the only remaining profile, or unknown — there must always
     /// be an active profile to fall back to.
+    @discardableResult
     func removeProfile(id: UUID) -> Bool {
         guard backendProfiles.count > 1,
               id != activeProfileId,
@@ -315,8 +320,9 @@ final class AppSettings: ObservableObject {
         let d = defaults
 
         // Legacy single-backend values. Used as the migration source when no
-        // profile payload exists yet, and (for backendURL) to preserve the
-        // existing fresh-install onboarding gate below.
+        // profile payload exists yet, and (for backendURL, on that same
+        // no-payload path) to preserve the existing fresh-install onboarding
+        // gate below.
         let legacyURL = d.string(forKey: Keys.backendURL) ?? "http://127.0.0.1:8765"
         let legacyToken = d.string(forKey: Keys.authToken) ?? ""
         let legacyHarness = d.string(forKey: Keys.selectedHarness) ?? "hermes"
@@ -332,6 +338,7 @@ final class AppSettings: ObservableObject {
         let profiles: [BackendProfile]
         let activeId: UUID
         var needsMigrationPersist = false
+        var needsActiveIdRepair = false
         if let decoded = decodedProfiles {
             profiles = decoded
             if let idString = d.string(forKey: Keys.activeBackendProfileId),
@@ -339,7 +346,11 @@ final class AppSettings: ObservableObject {
                decoded.contains(where: { $0.id == uuid }) {
                 activeId = uuid
             } else {
+                // Persisted active id is missing or points at a profile that
+                // no longer exists — fall back to the first profile and
+                // repair the stored state below so later reads/writes agree.
                 activeId = decoded[0].id
+                needsActiveIdRepair = true
             }
         } else {
             // No profile payload yet — migrate the legacy single-backend
@@ -384,13 +395,22 @@ final class AppSettings: ObservableObject {
         self.fillerVerbosity = FillerVerbosity(rawValue: fillerRaw) ?? .normal
         // Onboarding shows on a fresh install (default URL + flag unset). Treat
         // an already-configured non-default backend as onboarded so upgraders
-        // aren't bounced back through onboarding.
-        let configured = legacyURL != "http://127.0.0.1:8765" && !legacyURL.isEmpty
+        // aren't bounced back through onboarding. When a profile payload was
+        // decoded, the inference must reflect the ACTIVE profile's URL (the
+        // legacy key can be stale once profiles diverge), not the raw legacy
+        // key; the no-payload migration path keeps using legacyURL as before.
+        let onboardingURL = decodedProfiles != nil ? active.url : legacyURL
+        let configured = onboardingURL != "http://127.0.0.1:8765" && !onboardingURL.isEmpty
         self.hasCompletedOnboarding = d.bool(forKey: Keys.hasCompletedOnboarding) || configured
 
         if needsMigrationPersist {
             persistProfiles()
             persistActiveProfileId()
+        } else if needsActiveIdRepair {
+            persistActiveProfileId()
+            d.set(active.url, forKey: Keys.backendURL)
+            d.set(active.authToken, forKey: Keys.authToken)
+            d.set(active.selectedHarness, forKey: Keys.selectedHarness)
         }
     }
 

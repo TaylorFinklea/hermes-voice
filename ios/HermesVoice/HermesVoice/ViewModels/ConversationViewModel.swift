@@ -700,6 +700,36 @@ final class ConversationViewModel: ObservableObject {
         state = .idle
     }
 
+    /// Whether the active backend profile can be switched right now: never
+    /// mid-turn (no reroute of live work) and never while a voice
+    /// approval/question is paused waiting on the user.
+    var canSwitchBackend: Bool {
+        guard pendingApproval == nil, pendingQuestion == nil else { return false }
+        switch state {
+        case .idle, .error: return true
+        case .recording, .sending, .thinking, .speaking: return false
+        }
+    }
+
+    /// Switches the active backend profile and clears the in-memory
+    /// conversation so the next turn starts fresh against the new backend.
+    /// Returns false (no-op) when busy (`canSwitchBackend`) or `profileID`
+    /// is unknown.
+    @discardableResult
+    func switchBackend(to profileID: UUID) -> Bool {
+        guard canSwitchBackend, settings.activateProfile(id: profileID) else { return false }
+        // A completed stream's task may still be unwinding when we get here
+        // (`.done` flips state to `.idle` BEFORE the task itself finishes) —
+        // cancel it so a late old-backend event can't touch the new context.
+        // This is belt-and-braces teardown of an ALREADY-FINISHED turn's
+        // task, not a cancel-and-reroute of live work (canSwitchBackend
+        // already forbade that above).
+        currentTurn?.cancel()
+        currentTurn = nil
+        reset()
+        return true
+    }
+
     /// Attach the live conversation to an existing coding-agent session (e.g. a
     /// Claude Code session you started in your terminal). Routes subsequent voice
     /// turns to that harness + session id; the backend resumes it in its own

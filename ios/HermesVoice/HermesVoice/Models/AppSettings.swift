@@ -315,6 +315,25 @@ final class AppSettings: ObservableObject {
         defaults.set(activeProfileId.uuidString, forKey: Keys.activeBackendProfileId)
     }
 
+    /// Non-observable read of the active backend profile, for contexts (App
+    /// Intents) that run outside the app process and must not construct an
+    /// observable `AppSettings` (no Combine machinery, no migration writes)
+    /// just to read a URL/token. Reads the SAME persisted profile payload
+    /// keys the instance init above decodes. Returns nil when no profile
+    /// payload exists yet — callers fall back to the legacy raw keys.
+    static func readActiveProfile(defaults: UserDefaults = .standard) -> BackendProfile? {
+        guard let data = defaults.data(forKey: Keys.backendProfiles),
+              let decoded = try? JSONDecoder().decode([BackendProfile].self, from: data),
+              !decoded.isEmpty
+        else { return nil }
+        if let idString = defaults.string(forKey: Keys.activeBackendProfileId),
+           let uuid = UUID(uuidString: idString),
+           let match = decoded.first(where: { $0.id == uuid }) {
+            return match
+        }
+        return decoded.first
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         let d = defaults

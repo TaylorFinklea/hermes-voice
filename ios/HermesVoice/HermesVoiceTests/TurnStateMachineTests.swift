@@ -82,9 +82,15 @@ final class TurnStateMachineTests: XCTestCase {
     // MARK: - Helpers
 
     /// A settings object pinned to a server voice with filler off, so the turn
-    /// path never reaches `LocalSpeaker`/`player`.
+    /// path never reaches `LocalSpeaker`/`player`. Backed by a unique
+    /// UserDefaults suite (mirrors `BackendProfileTests`' pattern) so tests
+    /// don't write profile + legacy keys into the test host's standard
+    /// defaults.
     private func makeSettings() -> AppSettings {
-        let s = AppSettings()
+        let suite = "TurnStateMachineTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        let s = AppSettings(defaults: defaults)
         s.selectedVoiceId = "elevenlabs-rachel"  // non-"local:" → server voice
         s.fillerVerbosity = .off
         return s
@@ -189,5 +195,46 @@ final class TurnStateMachineTests: XCTestCase {
         guard case .error = vm.state else {
             return XCTFail("expected .error, got \(vm.state)")
         }
+    }
+
+    func testSwitchBackendClearsConversationBeforeNextTurn() throws {
+        let settings = makeSettings()
+        let other = BackendProfile(name: "Laptop B", url: "https://b.example:8765", authToken: "b", selectedHarness: "codex")
+        settings.saveProfile(other)
+        let vm = ConversationViewModel(settings: settings, transport: FakeTransport())
+        vm.attach(sessionId: "session-a", harness: "claude", repo: "/tmp/repo", readOnly: true)
+
+        XCTAssertTrue(vm.switchBackend(to: other.id))
+        XCTAssertEqual(settings.activeBackendProfile.id, other.id)
+        XCTAssertEqual(settings.selectedHarness, "codex")
+        XCTAssertNil(vm.sessionId)
+        XCTAssertTrue(vm.messages.isEmpty)
+        XCTAssertNil(vm.attachedRepo)
+    }
+
+    func testSwitchBackendRejectedWhileApprovalPending() async throws {
+        let settings = makeSettings()
+        let other = BackendProfile(name: "Laptop B", url: "https://b.example:8765", authToken: "b", selectedHarness: "codex")
+        settings.saveProfile(other)
+        let originalId = settings.activeBackendProfile.id
+
+        let fake = FakeTransport()
+        // No `.done`/`.assistant` after the approval request — the stream
+        // just ends, so state settles back to `.idle` while the approval
+        // itself stays pending (nothing answers it). Exercises the
+        // `canSwitchBackend` guard's pendingApproval check independently of
+        // `state`.
+        fake.textEvents = [
+            .turn(turnId: "t-1"),
+            .approvalRequest(requestId: "r-1", tool: "edit_file", title: "Edit config.py", preview: "…"),
+        ]
+        let vm = ConversationViewModel(settings: settings, transport: fake)
+
+        await vm.sendText("do something risky")
+
+        XCTAssertNotNil(vm.pendingApproval, "approval request should still be pending")
+        XCTAssertFalse(vm.canSwitchBackend)
+        XCTAssertFalse(vm.switchBackend(to: other.id))
+        XCTAssertEqual(settings.activeBackendProfile.id, originalId)
     }
 }

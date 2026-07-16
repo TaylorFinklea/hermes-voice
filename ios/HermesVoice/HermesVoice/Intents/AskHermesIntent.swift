@@ -6,12 +6,28 @@ import Foundation
 struct SiriBackendConfig {
     let backendURL: String
     let authToken: String
+    let selectedHarness: String
+    /// The active profile's id (uuidString), or "" when read via the
+    /// legacy-keys fallback (no profile payload exists yet). Used to guard
+    /// `SiriSession` continuity against a switch to a different backend.
+    let profileID: String
 
-    static func load() -> SiriBackendConfig {
-        let d = UserDefaults.standard
+    static func load(defaults: UserDefaults = .standard) -> SiriBackendConfig {
+        if let profile = AppSettings.readActiveProfile(defaults: defaults) {
+            return SiriBackendConfig(
+                backendURL: profile.url,
+                authToken: profile.authToken,
+                selectedHarness: profile.selectedHarness,
+                profileID: profile.id.uuidString
+            )
+        }
+        // No profile payload yet (pre-migration / never-launched app) —
+        // fall back to the legacy raw keys.
         return SiriBackendConfig(
-            backendURL: d.string(forKey: "hv.backendURL") ?? "",
-            authToken: d.string(forKey: "hv.authToken") ?? ""
+            backendURL: defaults.string(forKey: "hv.backendURL") ?? "",
+            authToken: defaults.string(forKey: "hv.authToken") ?? "",
+            selectedHarness: defaults.string(forKey: "hv.selectedHarness") ?? "hermes",
+            profileID: ""
         )
     }
 }
@@ -25,23 +41,27 @@ struct SiriSession {
 
     private static let idKey = "hv.siri.session.id"
     private static let tsKey = "hv.siri.session.ts"
+    private static let profileKey = "hv.siri.session.profileID"
     private static let stalenessSeconds: TimeInterval = 600
 
-    static func load() -> SiriSession? {
-        let d = UserDefaults.standard
-        guard let id = d.string(forKey: idKey),
+    /// Returns the saved session only when it's fresh AND was created under
+    /// `profileID` — otherwise nil, so a backend switch never sends laptop
+    /// A's session id to laptop B.
+    static func load(profileID: String, defaults: UserDefaults = .standard) -> SiriSession? {
+        guard let id = defaults.string(forKey: idKey),
               !id.isEmpty,
-              let ts = d.object(forKey: tsKey) as? Date,
-              Date().timeIntervalSince(ts) <= stalenessSeconds
+              let ts = defaults.object(forKey: tsKey) as? Date,
+              Date().timeIntervalSince(ts) <= stalenessSeconds,
+              defaults.string(forKey: profileKey) == profileID
         else { return nil }
         return SiriSession(id: id, lastUsed: ts)
     }
 
-    static func save(_ id: String) {
+    static func save(_ id: String, profileID: String, defaults: UserDefaults = .standard) {
         guard !id.isEmpty else { return }
-        let d = UserDefaults.standard
-        d.set(id, forKey: idKey)
-        d.set(Date(), forKey: tsKey)
+        defaults.set(id, forKey: idKey)
+        defaults.set(Date(), forKey: tsKey)
+        defaults.set(profileID, forKey: profileKey)
     }
 }
 
@@ -80,11 +100,11 @@ struct AskHermesIntent: AppIntent {
         }
 
         let api = HermesVoiceAPI(baseURL: config.backendURL, authToken: config.authToken)
-        let session = SiriSession.load()
+        let session = SiriSession.load(profileID: config.profileID)
 
         do {
-            let response = try await api.sendText(prompt, sessionId: session?.id)
-            SiriSession.save(response.sessionId)
+            let response = try await api.sendText(prompt, sessionId: session?.id, harness: config.selectedHarness)
+            SiriSession.save(response.sessionId, profileID: config.profileID)
             let spoken = response.assistantText.isEmpty
                 ? "The agent didn't have anything to say."
                 : response.assistantText

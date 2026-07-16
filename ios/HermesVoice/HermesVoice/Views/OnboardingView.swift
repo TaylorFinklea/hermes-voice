@@ -188,8 +188,17 @@ struct OnboardingView: View {
         let api = HermesVoiceAPI(baseURL: trimmed, authToken: token)
         do {
             _ = try await api.health()
-            settings.backendURL = trimmed
-            settings.authToken = token
+            // Update the initial ACTIVE profile (not the legacy top-level
+            // properties directly) so onboarding goes through the same
+            // profile API the rest of the app uses.
+            let active = settings.activeBackendProfile
+            settings.saveProfile(BackendProfile(
+                id: active.id,
+                name: BackendProfile.suggestedName(for: trimmed),
+                url: trimmed,
+                authToken: token,
+                selectedHarness: active.selectedHarness
+            ))
             settings.markReachable()
             // Flips HermesVoiceApp from OnboardingView to MainView.
             settings.hasCompletedOnboarding = true

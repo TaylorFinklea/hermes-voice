@@ -93,7 +93,57 @@ final class NotificationManager: NSObject, ObservableObject {
     private func registerToken(_ token: String, settings: AppSettings) {
         guard !registrationInFlight else { return }
         registrationInFlight = true
+        Task { @MainActor in
+            defer { self.registrationInFlight = false }
+            await self.performRegistration(token: token, settings: settings)
+        }
+    }
 
+    /// Re-registers the already-captured APNs token with whichever backend
+    /// is currently active. APNs v1 is active-only (no per-profile
+    /// registration) — only the backend you're currently pointed at should
+    /// hold your device token, so this is what a profile switch calls to
+    /// pick the new backend up. No-op when notifications are off or no
+    /// token has ever been captured. Unlike `registerToken`'s early return,
+    /// a registration still in flight is waited out and retried once
+    /// (rather than silently dropping the switch-triggered registration) —
+    /// still a single attempt, not a queue.
+    func registerSavedDeviceWithActiveBackendIfNeeded() {
+        guard let settings else { return }
+        guard settings.notificationsEnabled, !settings.lastApnsToken.isEmpty else { return }
+        let token = settings.lastApnsToken
+        Task { @MainActor in
+            while self.registrationInFlight {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            self.registrationInFlight = true
+            defer { self.registrationInFlight = false }
+            await self.performRegistration(token: token, settings: settings)
+        }
+    }
+
+    /// Called after the active backend profile changes. Best-effort
+    /// UNregisters the saved device token from `previous`'s backend — a
+    /// failure is logged and never blocks the new registration (design
+    /// rule: v1 has no retry queue for unregister) — then re-registers with
+    /// the now-active backend via `registerSavedDeviceWithActiveBackendIfNeeded()`.
+    func handleBackendSwitch(previous: BackendProfile) {
+        guard let settings else { return }
+        let token = settings.lastApnsToken
+        Task { @MainActor in
+            if !token.isEmpty {
+                let oldAPI = HermesVoiceAPI(baseURL: previous.url, authToken: previous.authToken)
+                do {
+                    try await oldAPI.unregisterDevice(token: token)
+                } catch {
+                    print("device-token unregister from previous backend failed: \(error)")
+                }
+            }
+            self.registerSavedDeviceWithActiveBackendIfNeeded()
+        }
+    }
+
+    private func performRegistration(token: String, settings: AppSettings) async {
         let api = HermesVoiceAPI(
             baseURL: settings.backendURL, authToken: settings.authToken
         )
@@ -106,22 +156,18 @@ final class NotificationManager: NSObject, ObservableObject {
         #else
         let env = "production"
         #endif
-
-        Task { @MainActor in
-            defer { self.registrationInFlight = false }
-            do {
-                _ = try await api.registerDevice(
-                    token: token,
-                    platform: "ios",
-                    bundleId: bundleId,
-                    environment: env
-                )
-                settings.lastApnsToken = token
-            } catch {
-                // Backend down or token rejected. Token cached locally so
-                // we retry next launch; no error UI here (this is silent).
-                print("device-token registration failed: \(error)")
-            }
+        do {
+            _ = try await api.registerDevice(
+                token: token,
+                platform: "ios",
+                bundleId: bundleId,
+                environment: env
+            )
+            settings.lastApnsToken = token
+        } catch {
+            // Backend down or token rejected. Token cached locally so
+            // we retry next launch; no error UI here (this is silent).
+            print("device-token registration failed: \(error)")
         }
     }
 }

@@ -154,4 +154,28 @@ final class BackendProfileTests: XCTestCase {
 
         XCTAssertNil(settings.lastReachable)
     }
+
+    func testSiriConfigurationUsesActiveProfile() {
+        let settings = AppSettings(defaults: defaults)
+        let second = BackendProfile(name: "Laptop", url: "https://laptop.example:8765", authToken: "tok-b", selectedHarness: "codex")
+        settings.saveProfile(second)
+        XCTAssertTrue(settings.activateProfile(id: second.id))
+
+        let config = SiriBackendConfig.load(defaults: defaults)
+
+        XCTAssertEqual(config.backendURL, second.url)
+        XCTAssertEqual(config.authToken, second.authToken)
+        XCTAssertEqual(config.selectedHarness, second.selectedHarness)
+        XCTAssertEqual(config.profileID, second.id.uuidString)
+    }
+
+    func testSiriSessionGuardsAgainstWrongProfile() {
+        let profileA = UUID().uuidString
+        let profileB = UUID().uuidString
+        SiriSession.save("s-1", profileID: profileA, defaults: defaults)
+
+        XCTAssertNil(SiriSession.load(profileID: profileB, defaults: defaults))
+        let loaded = SiriSession.load(profileID: profileA, defaults: defaults)
+        XCTAssertEqual(loaded?.id, "s-1")
+    }
 }

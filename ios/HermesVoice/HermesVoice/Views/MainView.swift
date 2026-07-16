@@ -5,6 +5,7 @@ struct MainView: View {
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var conversationMode: ConversationModeController
     @StateObject private var notifications = NotificationManager.shared
+    @StateObject private var watchBridge = PhoneWatchBridge.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var activeSheet: ActiveSheet?
     @State private var textInput = ""
@@ -14,7 +15,7 @@ struct MainView: View {
     // a single view shadow each other (History stopped opening once the
     // transcript sheet was added) — so route them all through one `.sheet(item:)`.
     private enum ActiveSheet: String, Identifiable {
-        case settings, history, transcript
+        case settings, history, transcript, servers
         var id: String { rawValue }
     }
 
@@ -72,6 +73,7 @@ struct MainView: View {
                     SettingsView()
                         .environmentObject(settings)
                         .environmentObject(conversation)
+                        .environmentObject(conversationMode)
                 case .history:
                     HistoryView()
                         .environmentObject(settings)
@@ -79,6 +81,20 @@ struct MainView: View {
                 case .transcript:
                     TranscriptView()
                         .environmentObject(conversation)
+                case .servers:
+                    // BackendProfileManagerView is normally pushed via
+                    // NavigationLink from inside SettingsView's own
+                    // NavigationStack, so unlike the other cases here it
+                    // doesn't wrap itself — do that (and match their
+                    // tint/color-scheme) at this call site instead.
+                    NavigationStack {
+                        BackendProfileManagerView()
+                            .environmentObject(settings)
+                            .environmentObject(conversation)
+                            .environmentObject(conversationMode)
+                    }
+                    .tint(HVColor.amber)
+                    .preferredColorScheme(.dark)
                 }
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -151,10 +167,11 @@ struct MainView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            Text(settings.activeAgentTitle)
-                .font(HVFont.title)
-                .tracking(0.8)
-                .foregroundStyle(settings.agentAccent)
+            BackendProfilePicker(
+                canSwitch: canSwitchBackendProfile,
+                select: selectBackendProfile,
+                manage: { activeSheet = .servers }
+            )
         }
         ToolbarItem(placement: .topBarLeading) {
             Button { activeSheet = .history } label: {
@@ -178,6 +195,36 @@ struct MainView: View {
             }
             .accessibilityLabel("Settings")
         }
+    }
+
+    /// The header picker only opens when the active backend is actually
+    /// switchable: never mid-turn/pending-approval (`canSwitchBackend`),
+    /// never during hands-free (a switch mid-listen has nowhere sane to
+    /// land), and never while relaying to the Watch (switching out from
+    /// under a live relay would strand it).
+    private var canSwitchBackendProfile: Bool {
+        BackendRouting.canApply(
+            conversation: conversation,
+            conversationMode: conversationMode,
+            watchBridge: watchBridge
+        )
+    }
+
+    /// Re-check the composite gate FIRST: the `Menu` is only *disabled* by
+    /// `canSwitch`, so an already-open menu can outlive eligibility — a Watch
+    /// relay or hands-free turn can start after it opened, letting this fire
+    /// while ineligible. Bail before any mutation if no longer eligible.
+    /// Then: selecting the already-active profile is a no-op; otherwise capture
+    /// `previous` before any mutation (switching flips
+    /// `settings.activeBackendProfile`), and only run the shared post-apply
+    /// orchestration once the switch actually lands. A header switch always
+    /// moves to a different profile, so the endpoint always changed.
+    private func selectBackendProfile(_ profile: BackendProfile) {
+        guard canSwitchBackendProfile else { return }
+        guard profile.id != settings.activeBackendProfile.id else { return }
+        let previous = settings.activeBackendProfile
+        guard conversation.switchBackend(to: profile.id) else { return }
+        BackendRouting.applySideEffects(previous: previous, endpointChanged: true)
     }
 
     /// "New conversation" is available only at rest (idle/error) and only when

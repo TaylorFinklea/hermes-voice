@@ -17,6 +17,59 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
     private weak var settings: AppSettings?
     private let wcSession: WCSession?
 
+    /// The (sessionId, profileId) pair the Watch's current known session was
+    /// last relayed under (nil = no relayed session yet). Stores BOTH the
+    /// session id we handed the Watch AND the profile it was created under.
+    /// Set only after a relay actually hands the Watch a session id (mirrors
+    /// the condition under which `WatchSession.handleResponse` updates its own
+    /// `sessionId`), so a turn that fails mid-switch doesn't wrongly "clear"
+    /// the mismatch. On each incoming turn the relay guard forwards the
+    /// Watch's session id only when it matches BOTH fields — same session id
+    /// AND same active profile — so a post-switch turn (wrong laptop) or a
+    /// delivery that was never confirmed drops the stale id and starts fresh.
+    /// Because the marker holds the id we last SENT the Watch, a failed
+    /// `sendMessage` delivery is self-correcting: the Watch's stale id simply
+    /// won't match the stored pair next turn.
+    /// Persisted: WCSession can relaunch the phone app in the background
+    /// while the Watch app (and its in-memory session id) stays resident,
+    /// so an in-memory marker would wrongly drop Watch continuity on every
+    /// phone-process relaunch.
+    private struct RelayMarker: Equatable {
+        let sessionId: String
+        let profileId: UUID
+    }
+
+    private var relayMarker: RelayMarker? {
+        get {
+            let d = UserDefaults.standard
+            guard let sid = d.string(forKey: Self.relayedSessionIdKey), !sid.isEmpty,
+                  let pidString = d.string(forKey: Self.relayedSessionProfileKey),
+                  let pid = UUID(uuidString: pidString)
+            else { return nil }
+            return RelayMarker(sessionId: sid, profileId: pid)
+        }
+        set {
+            let d = UserDefaults.standard
+            d.set(newValue?.sessionId, forKey: Self.relayedSessionIdKey)
+            d.set(newValue?.profileId.uuidString, forKey: Self.relayedSessionProfileKey)
+        }
+    }
+    private static let relayedSessionIdKey = "hv.watch.sessionID"
+    private static let relayedSessionProfileKey = "hv.watch.sessionProfileID"
+
+    /// Clears the relayed-session marker so the next Watch turn starts a fresh
+    /// conversation. Called by the unified backend-apply path when routing
+    /// changes (the profile UUID may be unchanged while the endpoint/agent
+    /// changed, so the marker can't self-invalidate on id alone).
+    func clearRelayMarker() {
+        relayMarker = nil
+    }
+
+    /// True for the duration of a Watch-relayed turn (upload → reply →
+    /// optional audio relay). Drives the header picker's enabled condition
+    /// so a profile switch can't land mid-relay.
+    @Published private(set) var isRelaying = false
+
     override init() {
         if WCSession.isSupported() {
             self.wcSession = WCSession.default
@@ -38,12 +91,25 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
     // MARK: - Inbound from Watch
 
     fileprivate func handleAudioTransfer(_ file: WCSessionFile) async {
+        isRelaying = true
+        defer { isRelaying = false }
         guard let settings else {
             await replyError("App not ready — open Harness Voice on your phone.")
             return
         }
         let metadata = file.metadata ?? [:]
-        let sessionId = (metadata["session_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        var sessionId = (metadata["session_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        // Forward the Watch's session id ONLY when it matches the stored pair:
+        // the same session id we last handed the Watch AND the profile active
+        // now. Any mismatch — a session id from a different laptop, or one whose
+        // delivery to the Watch was never confirmed — is dropped, starting a
+        // fresh conversation instead of sending laptop A's session id to laptop B.
+        if let sid = sessionId {
+            let marker = relayMarker
+            if marker?.sessionId != sid || marker?.profileId != settings.activeBackendProfile.id {
+                sessionId = nil
+            }
+        }
 
         let api = HermesVoiceAPI(
             baseURL: settings.backendURL, authToken: settings.authToken
@@ -55,11 +121,22 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
                 sessionId: sessionId,
                 harness: settings.selectedHarness
             )
+            // Advance the marker to the (sessionId, profileId) we're about to
+            // hand the Watch — but only once there's actually a session id to
+            // compare against next time (empty sessionId means
+            // WatchSession.handleResponse leaves its stored id untouched too).
+            if !response.sessionId.isEmpty {
+                relayMarker = RelayMarker(
+                    sessionId: response.sessionId,
+                    profileId: settings.activeBackendProfile.id
+                )
+            }
             await replyToWatch(response: response)
 
-            // If the user opted in, also relay the audio reply to Watch.
-            // This is a separate fire-and-forget step so the text response
-            // reaches the watch immediately and audio follows when ready.
+            // If the user opted in, also relay the audio reply to Watch. This
+            // is awaited inline — deliberately, inside the `isRelaying` window —
+            // so the relay finishes before the turn is marked done. The text
+            // reply above has already reached the Watch; the audio follows here.
             if settings.playReplyOnWatch, let audioPath = response.audioUrl {
                 await relayAudioToWatch(audioPath: audioPath, api: api)
             }

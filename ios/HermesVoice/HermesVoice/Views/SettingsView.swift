@@ -3,18 +3,14 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var conversation: ConversationViewModel
+    @EnvironmentObject var conversationMode: ConversationModeController
+    @StateObject private var watchBridge = PhoneWatchBridge.shared
     @Environment(\.dismiss) private var dismiss
 
-    // Local mirrors so typing in the URL field doesn't cascade through
-    // @Published → UserDefaults.write → view re-render on every keystroke.
-    // We commit on submit and on dismiss.
-    @State private var draftURL: String = ""
-    @State private var draftToken: String = ""
-    @State private var hydrated = false
-
-    @State private var healthResult: String = ""
-    @State private var pinging = false
     @State private var showSchedules = false
+    /// Brief message shown under the Agent picker when a harness change is
+    /// blocked by the routing gate (a turn / hands-free / Watch relay in flight).
+    @State private var harnessApplyHint = ""
     @State private var voices: [HermesVoiceAPI.VoiceOption] = []
     @State private var voicesLoading = false
     @State private var voicesError = ""
@@ -59,7 +55,6 @@ struct SettingsView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
-                        commit()
                         dismiss()
                     }
                     .font(HVFont.body.weight(.semibold))
@@ -69,13 +64,6 @@ struct SettingsView: View {
             .toolbarBackground(HVColor.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .onAppear {
-                if !hydrated {
-                    draftURL = settings.backendURL
-                    draftToken = settings.authToken
-                    hydrated = true
-                }
-            }
             .task { await loadVoices() }
             .task { await loadHarnesses() }
         }
@@ -85,24 +73,30 @@ struct SettingsView: View {
 
     private var backendSection: some View {
         Section {
-            HVField(label: "URL", value: $draftURL, placeholder: "https://host:8765",
-                    onSubmit: { commit() })
-            HVField(label: "Token", value: $draftToken, placeholder: "(required by your backend)",
-                    secure: true, onSubmit: { commit() })
-            Button {
-                Task { await ping() }
+            NavigationLink {
+                BackendProfileManagerView()
+                    .environmentObject(settings)
+                    .environmentObject(conversation)
+                    .environmentObject(conversationMode)
             } label: {
                 HStack {
-                    Text("Ping backend")
+                    Label("Manage servers", systemImage: "server.rack")
                         .font(HVFont.body)
-                        .foregroundStyle(HVColor.amber)
+                        .foregroundStyle(HVColor.cream)
                     Spacer()
-                    if pinging { ProgressView().tint(HVColor.amber) }
+                    Text(settings.activeBackendProfile.name)
+                        .font(HVFont.captionTiny)
+                        .foregroundStyle(HVColor.creamDim)
                 }
             }
-            .listRowBackground(HVColor.amberGlow.opacity(0.5))
+            .tint(HVColor.amber)
+            .listRowBackground(HVColor.creamSurface)
         } header: {
             sectionHeader("BACKEND")
+        } footer: {
+            Text("Add, edit, or remove saved backend connections.")
+                .font(HVFont.captionTiny)
+                .foregroundStyle(HVColor.creamDim)
         }
     }
 
@@ -229,7 +223,12 @@ struct SettingsView: View {
 
     private var harnessSection: some View {
         Section {
-            Picker("Agent", selection: $settings.selectedHarness) {
+            // A user-driven harness change on the ACTIVE profile is a routing
+            // change: route it through the same gate + switch teardown +
+            // continuity invalidation as the header picker, rather than writing
+            // `settings.selectedHarness` directly (which would send a live
+            // session id under the new agent with Watch/Siri guards blind).
+            Picker("Agent", selection: harnessSelection) {
                 ForEach(harnesses) { h in
                     Text(h.available ? h.name : "\(h.name) (unavailable)")
                         .tag(h.harnessId)
@@ -238,6 +237,12 @@ struct SettingsView: View {
             .pickerStyle(.navigationLink)
             .tint(HVColor.amber)
             .listRowBackground(HVColor.creamSurface)
+            if !harnessApplyHint.isEmpty {
+                Text(harnessApplyHint)
+                    .font(HVFont.captionTiny)
+                    .foregroundStyle(HVColor.bronze)
+                    .listRowBackground(HVColor.creamSurface)
+            }
             if harnessesLoading {
                 HStack(spacing: 8) {
                     ProgressView().tint(HVColor.amber)
@@ -278,6 +283,41 @@ struct SettingsView: View {
         }
     }
 
+    /// Binding backing the Agent picker. `get` always reports the persisted
+    /// harness (so a blocked change visually reverts on the next render); `set`
+    /// routes the change through the gated apply path.
+    private var harnessSelection: Binding<String> {
+        Binding(
+            get: { settings.selectedHarness },
+            set: { applyHarnessChange($0) }
+        )
+    }
+
+    /// Applies a user-driven Agent change on the active profile through the
+    /// shared routing gate. On success: sets the harness (which updates the
+    /// active profile), runs a same-id switch (fresh conversation against the
+    /// same endpoint / new agent), and invalidates cross-device continuity.
+    /// On a gate failure: does nothing (the picker's `get` reverts the visual
+    /// selection) and surfaces a brief hint.
+    private func applyHarnessChange(_ newHarness: String) {
+        guard newHarness != settings.selectedHarness else { return }
+        guard BackendRouting.canApply(
+            conversation: conversation,
+            conversationMode: conversationMode,
+            watchBridge: watchBridge
+        ) else {
+            harnessApplyHint = "Finish or cancel the current turn, hands-free session, or Watch activity before switching agents."
+            return
+        }
+        let previous = settings.activeBackendProfile
+        settings.selectedHarness = newHarness   // updates the active profile's harness
+        conversation.switchBackend(to: previous.id)   // same-id switch → fresh conversation
+        // Harness-only change: no endpoint change, so no APNs handoff — but
+        // Siri/Watch continuity still invalidates (same profile, new agent).
+        BackendRouting.applySideEffects(previous: previous, endpointChanged: false)
+        harnessApplyHint = ""
+    }
+
     private func loadHarnesses() async {
         harnessesLoading = true
         defer { harnessesLoading = false }
@@ -286,12 +326,27 @@ struct SettingsView: View {
             harnesses = try await api.listHarnesses()
             harnessesError = ""
             // If the persisted selection is no longer offered (e.g. a CLI was
-            // uninstalled), fall back to the first available agent.
+            // uninstalled), fall back to the first available agent. The
+            // session's harness no longer exists on this backend, so continuing
+            // it is impossible — route the correction through the SAME gated
+            // apply path a user-driven change uses (gate + same-id switch +
+            // continuity invalidation), NOT a direct `settings.selectedHarness`
+            // write that would send a live session id under the fallback agent
+            // with Watch/Siri guards blind (the profile UUID is unchanged).
             if !harnesses.isEmpty,
-               !harnesses.contains(where: { $0.harnessId == settings.selectedHarness && $0.available }) {
-                if let fallback = harnesses.first(where: { $0.available }) ?? harnesses.first {
-                    settings.selectedHarness = fallback.harnessId
+               !harnesses.contains(where: { $0.harnessId == settings.selectedHarness && $0.available }),
+               let fallback = harnesses.first(where: { $0.available }) ?? harnesses.first {
+                if BackendRouting.canApply(
+                    conversation: conversation,
+                    conversationMode: conversationMode,
+                    watchBridge: watchBridge
+                ) {
+                    applyHarnessChange(fallback.harnessId)
                 }
+                // else: a live turn / hands-free / Watch relay is in flight —
+                // DEFER; write nothing this load and leave the stored selection
+                // so the next Settings load or user action retries, rather than
+                // silently re-routing an active session.
             }
         } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code == 401 {
             harnessesError = "Auth token required — add it under Backend above."
@@ -487,13 +542,6 @@ struct SettingsView: View {
                     accent: lastSeenIsStale ? HVColor.bronze : HVColor.amber)
             HVKVRow(label: "Build", value: Self.buildInfo)
             HVKVRow(label: "ATS", value: Self.atsInfo)
-            if !healthResult.isEmpty {
-                Text(healthResult)
-                    .font(HVFont.captionTiny)
-                    .foregroundStyle(HVColor.creamDim)
-                    .textSelection(.enabled)
-                    .listRowBackground(HVColor.creamSurface)
-            }
         } header: {
             sectionHeader("DIAGNOSTICS")
         } footer: {
@@ -526,12 +574,6 @@ struct SettingsView: View {
         return Date().timeIntervalSince(date) > 600
     }
 
-    private func commit() {
-        let trimmed = draftURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed != settings.backendURL { settings.backendURL = trimmed }
-        if draftToken != settings.authToken { settings.authToken = draftToken }
-    }
-
     private static let buildInfo: String = {
         guard let exe = Bundle.main.executableURL,
               let attrs = try? FileManager.default.attributesOfItem(atPath: exe.path),
@@ -552,58 +594,9 @@ struct SettingsView: View {
         if local { return "local only" }
         return "configured but restrictive"
     }()
-
-    private func ping() async {
-        commit()
-        pinging = true
-        defer { pinging = false }
-        let api = HermesVoiceAPI(baseURL: settings.backendURL, authToken: settings.authToken)
-        do {
-            let json = try await api.health()
-            let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted])
-            healthResult = String(data: data, encoding: .utf8) ?? "<empty>"
-            settings.markReachable()
-        } catch {
-            healthResult = "Error: \(error.localizedDescription)"
-        }
-    }
 }
 
 // MARK: - Brand-styled form rows
-
-private struct HVField: View {
-    let label: String
-    @Binding var value: String
-    var placeholder: String = ""
-    var secure: Bool = false
-    var onSubmit: () -> Void = {}
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(HVFont.bodyDim)
-                .foregroundStyle(HVColor.creamDim)
-                .frame(width: 60, alignment: .leading)
-            if secure {
-                SecureField(placeholder, text: $value)
-                    .font(HVFont.body)
-                    .foregroundStyle(HVColor.cream)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onSubmit(onSubmit)
-            } else {
-                TextField(placeholder, text: $value)
-                    .font(HVFont.body)
-                    .foregroundStyle(HVColor.cream)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .onSubmit(onSubmit)
-            }
-        }
-        .listRowBackground(HVColor.creamSurface)
-    }
-}
 
 private struct HVToggleRow: View {
     let label: String

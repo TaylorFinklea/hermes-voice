@@ -56,6 +56,11 @@ final class TurnStateMachineTests: XCTestCase {
         /// `gateStreamError` when set, else finishing cleanly.
         var gateStreamFromCall: Int?
         var gateStreamError: Error?
+        /// Events a gated stream yields on `releaseStream()` BEFORE finishing.
+        /// Default empty preserves the "release just finishes" behavior the
+        /// other gated tests rely on; a test opts in to model a dead turn that
+        /// emits a late `.assistant`/`.done` after it should have been torn down.
+        var gatedReleaseEvents: [HermesVoiceAPI.TurnEvent] = []
         private var streamCallCount = 0
         private var streamDidEnter = false
         private var streamEnteredCont: CheckedContinuation<Void, Never>?
@@ -66,6 +71,7 @@ final class TurnStateMachineTests: XCTestCase {
             await withCheckedContinuation { streamEnteredCont = $0 }
         }
         func releaseStream() {
+            for ev in gatedReleaseEvents { streamReleaseCont?.yield(ev) }
             if let gateStreamError {
                 streamReleaseCont?.finish(throwing: gateStreamError)
             } else {
@@ -268,6 +274,81 @@ final class TurnStateMachineTests: XCTestCase {
         XCTAssertNil(vm.sessionId)
         XCTAssertTrue(vm.messages.isEmpty)
         XCTAssertNil(vm.attachedRepo)
+    }
+
+    /// Regression for the attach() continuity gap: `attach()` deliberately
+    /// carries the conversation forward (no `reset()`) when adopting a
+    /// session under a DIFFERENT harness on the active profile, but that's
+    /// still a routing-affecting change — both the persisted Siri session AND
+    /// the Watch relay marker are scoped to (session, profile), not harness, so
+    /// without invalidation they'd stay "valid" while pointing at a session
+    /// created under the OLD harness.
+    func testAttachClearsSiriAndWatchContinuityOnHarnessAdoption() throws {
+        let settings = makeSettings()
+        let profileID = settings.activeBackendProfile.id.uuidString
+        SiriSession.save("stale-siri-session", profileID: profileID, harness: "hermes", defaults: settings.defaults)
+        XCTAssertNotNil(SiriSession.load(profileID: profileID, harness: "hermes", defaults: settings.defaults))
+
+        // The production Watch bridge (`PhoneWatchBridge.shared`) clears against
+        // `.standard`, so seed + assert the marker there. Restored in defer so
+        // the test host's standard defaults aren't left polluted.
+        let markerProfile = settings.activeBackendProfile.id
+        PhoneWatchBridge.saveRelayMarker(
+            (sessionId: "stale-watch-session", profileId: markerProfile, harness: "hermes"),
+            to: .standard
+        )
+        defer { PhoneWatchBridge.saveRelayMarker(nil, to: .standard) }
+        XCTAssertNotNil(PhoneWatchBridge.loadRelayMarker(from: .standard))
+
+        let vm = ConversationViewModel(settings: settings, transport: FakeTransport())
+        // `makeSettings()` seeds a fresh profile with the "hermes" default
+        // harness, so attaching under "claude" is a genuine harness change.
+        vm.attach(sessionId: "session-a", harness: "claude", repo: "/tmp/repo", readOnly: true)
+
+        XCTAssertNil(SiriSession.load(profileID: profileID, harness: "hermes", defaults: settings.defaults))
+        XCTAssertNil(PhoneWatchBridge.loadRelayMarker(from: .standard),
+                     "attach adopting a different harness must clear the Watch relay marker too")
+    }
+
+    /// Regression for the attach() teardown gap: `attach()` can land while an
+    /// old turn's task is still live/unwinding (a completed stream flips state
+    /// to `.idle` BEFORE its task finishes). A late `.assistant`/`.done` from
+    /// that dead turn must not overwrite the just-attached session id or append
+    /// a stray reply. attach mirrors switchBackend's belt-and-braces
+    /// `currentTurn?.cancel()` teardown to close that window.
+    func testAttachMidTurnCancelsDeadTurnAndKeepsAttachedSession() async throws {
+        let fake = FakeTransport()
+        // Gate the first (only) turn so it parks in `.thinking`, mid-stream.
+        fake.gateStreamFromCall = 1
+        // On release the DEAD turn emits a late assistant + done under a
+        // DIFFERENT session id — exactly the events that, absent attach's
+        // teardown, would overwrite the attached session and append a stray reply.
+        fake.gatedReleaseEvents = [
+            .assistant(text: "SHOULD NOT APPEAR", sessionId: "dead-session"),
+            .done(sessionId: "dead-session"),
+        ]
+        let vm = ConversationViewModel(settings: makeSettings(), transport: fake)
+
+        // Turn drives to `.thinking` and parks in the gated stream.
+        let turn = Task { await vm.sendText("q1") }
+        await fake.awaitStreamEntered()
+        XCTAssertEqual(vm.state, .thinking)
+
+        // Attach lands mid-turn: it must cancel the parked turn's task.
+        vm.attach(sessionId: "session-a", harness: "claude", repo: "/tmp/repo", readOnly: true)
+        XCTAssertEqual(vm.sessionId, "session-a")
+        XCTAssertEqual(vm.state, .idle)
+
+        // Release the dead turn's stream — its late events must be ignored
+        // because attach cancelled the task.
+        fake.releaseStream()
+        await turn.value
+
+        XCTAssertEqual(vm.sessionId, "session-a",
+                       "a late event from the dead turn must not overwrite the attached session id")
+        XCTAssertEqual(vm.state, .idle)
+        XCTAssertFalse(vm.messages.contains { $0.text == "SHOULD NOT APPEAR" },
+                       "the dead turn must not append a stray assistant reply")
     }
 
     func testSwitchBackendRejectedWhileApprovalPending() async throws {

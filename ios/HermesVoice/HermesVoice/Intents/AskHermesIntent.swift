@@ -11,14 +11,24 @@ struct SiriBackendConfig {
     /// legacy-keys fallback (no profile payload exists yet). Used to guard
     /// `SiriSession` continuity against a switch to a different backend.
     let profileID: String
+    /// Whether the user has explicitly finished onboarding. Lets the "not
+    /// configured" guard distinguish a genuine loopback-default setup (a local
+    /// tunnel / simulator that the user onboarded against) from a fresh install
+    /// still carrying the migrated loopback default it never configured.
+    let hasCompletedOnboarding: Bool
 
     static func load(defaults: UserDefaults = .standard) -> SiriBackendConfig {
+        // Mirrors AppSettings.Keys.hasCompletedOnboarding (that enum is private
+        // to AppSettings; the legacy-key fallback below reads raw keys the same
+        // way). Read once and applied on both the profile and fallback paths.
+        let onboarded = defaults.bool(forKey: "hv.hasCompletedOnboarding")
         if let profile = AppSettings.readActiveProfile(defaults: defaults) {
             return SiriBackendConfig(
                 backendURL: profile.url,
                 authToken: profile.authToken,
                 selectedHarness: profile.selectedHarness,
-                profileID: profile.id.uuidString
+                profileID: profile.id.uuidString,
+                hasCompletedOnboarding: onboarded
             )
         }
         // No profile payload yet (pre-migration / never-launched app) —
@@ -27,8 +37,22 @@ struct SiriBackendConfig {
             backendURL: defaults.string(forKey: "hv.backendURL") ?? "",
             authToken: defaults.string(forKey: "hv.authToken") ?? "",
             selectedHarness: defaults.string(forKey: "hv.selectedHarness") ?? "hermes",
-            profileID: ""
+            profileID: "",
+            hasCompletedOnboarding: onboarded
         )
+    }
+
+    /// True when Siri has a real backend to talk to. Unconfigured iff the URL
+    /// is empty OR it's the loopback default AND onboarding was never completed
+    /// — so a user who genuinely onboarded against the loopback default (local
+    /// tunnel / simulator) is treated as configured, not bounced. Replaces a
+    /// plain URL-equality check that false-positived that genuine local user.
+    var isConfigured: Bool {
+        guard !backendURL.isEmpty else { return false }
+        if backendURL == AppSettings.defaultBackendURL, !hasCompletedOnboarding {
+            return false
+        }
+        return true
     }
 }
 
@@ -42,26 +66,32 @@ struct SiriSession {
     private static let idKey = "hv.siri.session.id"
     private static let tsKey = "hv.siri.session.ts"
     private static let profileKey = "hv.siri.session.profileID"
+    private static let harnessKey = "hv.siri.session.harness"
     private static let stalenessSeconds: TimeInterval = 600
 
     /// Returns the saved session only when it's fresh AND was created under
-    /// `profileID` — otherwise nil, so a backend switch never sends laptop
-    /// A's session id to laptop B.
-    static func load(profileID: String, defaults: UserDefaults = .standard) -> SiriSession? {
+    /// both `profileID` AND `harness` — otherwise nil. The profile guard stops
+    /// a backend switch from sending laptop A's session id to laptop B; the
+    /// harness guard closes the same-profile hole where `attach()` changes the
+    /// harness under one profile UUID, so a suspended Siri response saved for
+    /// the OLD harness must not resume against the NEW one.
+    static func load(profileID: String, harness: String, defaults: UserDefaults = .standard) -> SiriSession? {
         guard let id = defaults.string(forKey: idKey),
               !id.isEmpty,
               let ts = defaults.object(forKey: tsKey) as? Date,
               Date().timeIntervalSince(ts) <= stalenessSeconds,
-              defaults.string(forKey: profileKey) == profileID
+              defaults.string(forKey: profileKey) == profileID,
+              defaults.string(forKey: harnessKey) == harness
         else { return nil }
         return SiriSession(id: id, lastUsed: ts)
     }
 
-    static func save(_ id: String, profileID: String, defaults: UserDefaults = .standard) {
+    static func save(_ id: String, profileID: String, harness: String, defaults: UserDefaults = .standard) {
         guard !id.isEmpty else { return }
         defaults.set(id, forKey: idKey)
         defaults.set(Date(), forKey: tsKey)
         defaults.set(profileID, forKey: profileKey)
+        defaults.set(harness, forKey: harnessKey)
     }
 
     /// Drops the persisted Siri session so the next Siri turn starts fresh.
@@ -72,6 +102,7 @@ struct SiriSession {
         defaults.removeObject(forKey: idKey)
         defaults.removeObject(forKey: tsKey)
         defaults.removeObject(forKey: profileKey)
+        defaults.removeObject(forKey: harnessKey)
     }
 }
 
@@ -105,16 +136,23 @@ struct AskHermesIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let config = SiriBackendConfig.load()
-        guard !config.backendURL.isEmpty else {
+        // A fresh install's migrated profile can carry the loopback default
+        // URL without the user ever having configured a real backend — Siri
+        // must treat that the same as "not configured" rather than actually
+        // attempting a doomed localhost request. But a user who GENUINELY
+        // onboarded against the loopback default (local tunnel / simulator) is
+        // configured — `isConfigured` uses the persisted onboarding flag, not
+        // bare URL equality, so it doesn't false-positive that user.
+        guard config.isConfigured else {
             return .result(dialog: "Harness Voice isn't configured yet. Open the Harness app and set your backend URL first.")
         }
 
         let api = HermesVoiceAPI(baseURL: config.backendURL, authToken: config.authToken)
-        let session = SiriSession.load(profileID: config.profileID)
+        let session = SiriSession.load(profileID: config.profileID, harness: config.selectedHarness)
 
         do {
             let response = try await api.sendText(prompt, sessionId: session?.id, harness: config.selectedHarness)
-            SiriSession.save(response.sessionId, profileID: config.profileID)
+            SiriSession.save(response.sessionId, profileID: config.profileID, harness: config.selectedHarness)
             let spoken = response.assistantText.isEmpty
                 ? "The agent didn't have anything to say."
                 : response.assistantText

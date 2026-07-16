@@ -169,13 +169,13 @@ struct BackendProfileManagerView: View {
             }
         }
         .sheet(isPresented: $showingAdd) {
-            BackendProfileEditorView(existingProfile: nil, onSaved: { _ in })
+            BackendProfileEditorView(existingProfile: nil)
                 .environmentObject(settings)
                 .environmentObject(conversation)
                 .environmentObject(conversationMode)
         }
         .sheet(item: $editingProfile) { profile in
-            BackendProfileEditorView(existingProfile: profile, onSaved: { _ in })
+            BackendProfileEditorView(existingProfile: profile)
                 .environmentObject(settings)
                 .environmentObject(conversation)
                 .environmentObject(conversationMode)
@@ -262,7 +262,6 @@ struct BackendProfileManagerView: View {
 /// switch) rather than mutating settings directly.
 struct BackendProfileEditorView: View {
     let existingProfile: BackendProfile?
-    let onSaved: (BackendProfile) -> Void
 
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var conversation: ConversationViewModel
@@ -442,9 +441,13 @@ struct BackendProfileEditorView: View {
     }
 
     /// The harness that will be persisted: the picked one, or (when the picker
-    /// was never touched) the existing profile's harness.
+    /// was never touched, e.g. a check that came back with zero harnesses) the
+    /// draft's existing harness, else the app's default. Never blank — a saved
+    /// profile with an empty harness would silently break turns routed to it.
     private var effectiveHarness: String {
-        selectedHarness.isEmpty ? (existingProfile?.selectedHarness ?? "") : selectedHarness
+        if !selectedHarness.isEmpty { return selectedHarness }
+        if let existing = existingProfile?.selectedHarness, !existing.isEmpty { return existing }
+        return "hermes"
     }
 
     /// True when this edit changes the active profile's endpoint (url or token).
@@ -570,7 +573,6 @@ struct BackendProfileEditorView: View {
             // save with no reset and no orchestration.
             settings.saveProfile(profile)
         }
-        onSaved(profile)
         dismiss()
     }
 }

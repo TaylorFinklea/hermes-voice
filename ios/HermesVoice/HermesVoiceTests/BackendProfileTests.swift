@@ -172,10 +172,56 @@ final class BackendProfileTests: XCTestCase {
     func testSiriSessionGuardsAgainstWrongProfile() {
         let profileA = UUID().uuidString
         let profileB = UUID().uuidString
-        SiriSession.save("s-1", profileID: profileA, defaults: defaults)
+        SiriSession.save("s-1", profileID: profileA, harness: "hermes", defaults: defaults)
 
-        XCTAssertNil(SiriSession.load(profileID: profileB, defaults: defaults))
-        let loaded = SiriSession.load(profileID: profileA, defaults: defaults)
+        XCTAssertNil(SiriSession.load(profileID: profileB, harness: "hermes", defaults: defaults))
+        let loaded = SiriSession.load(profileID: profileA, harness: "hermes", defaults: defaults)
         XCTAssertEqual(loaded?.id, "s-1")
+    }
+
+    func testSiriSessionGuardsAgainstWrongHarness() {
+        let profile = UUID().uuidString
+        SiriSession.save("s-1", profileID: profile, harness: "claude", defaults: defaults)
+
+        // Same profile, different harness (an `attach()` harness swap under one
+        // profile UUID) → nil, so a suspended Siri response saved for the old
+        // harness never resumes against the new one.
+        XCTAssertNil(SiriSession.load(profileID: profile, harness: "codex", defaults: defaults))
+        // Same profile + harness → the session loads.
+        XCTAssertEqual(
+            SiriSession.load(profileID: profile, harness: "claude", defaults: defaults)?.id,
+            "s-1"
+        )
+    }
+
+    // MARK: - Siri configured-detection (loopback false-positive fix)
+
+    func testSiriConfigUnconfiguredWhenURLEmpty() {
+        // No profile payload and no legacy URL → empty backend URL → not
+        // configured (Siri answers "isn't configured yet").
+        let config = SiriBackendConfig.load(defaults: defaults)
+        XCTAssertEqual(config.backendURL, "")
+        XCTAssertFalse(config.isConfigured)
+    }
+
+    func testSiriConfigUnconfiguredWhenLoopbackDefaultAndNotOnboarded() {
+        // A fresh install migrates the loopback default into a profile and
+        // leaves onboarding false → still treated as not configured.
+        _ = AppSettings(defaults: defaults)
+        let config = SiriBackendConfig.load(defaults: defaults)
+        XCTAssertEqual(config.backendURL, AppSettings.defaultBackendURL)
+        XCTAssertFalse(config.hasCompletedOnboarding)
+        XCTAssertFalse(config.isConfigured)
+    }
+
+    func testSiriConfigConfiguredWhenLoopbackDefaultButOnboarded() {
+        // Genuine local user: loopback default URL but onboarding completed →
+        // configured, not bounced. This is the false-positive the fix removes.
+        let settings = AppSettings(defaults: defaults)
+        settings.hasCompletedOnboarding = true
+        let config = SiriBackendConfig.load(defaults: defaults)
+        XCTAssertEqual(config.backendURL, AppSettings.defaultBackendURL)
+        XCTAssertTrue(config.hasCompletedOnboarding)
+        XCTAssertTrue(config.isConfigured)
     }
 }

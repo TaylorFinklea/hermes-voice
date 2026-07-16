@@ -759,10 +759,37 @@ final class ConversationViewModel: ObservableObject {
     /// repo (read-only in this phase). Generalizes `resume(sessionId:)`.
     func attach(sessionId: String, harness: String, repo: String?, readOnly: Bool) {
         guard !sessionId.isEmpty else { return }
+        // Belt-and-braces teardown mirroring switchBackend: an old turn's task
+        // may still be live/unwinding when attach lands (a completed stream
+        // flips state to `.idle` BEFORE its task actually finishes), so a late
+        // `.assistant`/`.done` from that task could overwrite the just-attached
+        // session id or clobber state. Cancel it and drop any paused voice
+        // approval/question. Unlike switchBackend, attach deliberately does NOT
+        // `reset()` — it keeps `messages` and carries the attached session,
+        // both set below — and still settles to `.idle`.
+        currentTurn?.cancel()
+        currentTurn = nil
+        clearPending()
+        let harnessChanged = harness != settings.selectedHarness
         settings.selectedHarness = harness
         self.sessionId = sessionId
         attachedRepo = repo
         attachedReadOnly = readOnly
+        if harnessChanged {
+            // Adopting a session under a DIFFERENT harness on the active
+            // profile is a routing-affecting change, same as a harness-only
+            // apply from Settings/the editor — the persisted Siri session and
+            // the Watch relay marker are scoped to (session, profile), not
+            // harness, so they'd otherwise stay "valid" while pointing at a
+            // session created under the OLD harness. Reuse the switch path's
+            // own helpers (`BackendRouting.applySideEffects`) rather than
+            // duplicating the invalidation logic. Unlike a real switch,
+            // attach() deliberately does NOT `reset()` — it carries the
+            // attached session by design — and does NOT touch APNs (no
+            // endpoint change here, only the harness).
+            SiriSession.clear(defaults: settings.defaults)
+            PhoneWatchBridge.shared.clearRelayMarker()
+        }
         let place = repo.map { "in \($0)" } ?? "session"
         let modeLabel = readOnly ? " · read-only" : " · write · approval"
         messages.append(Message(

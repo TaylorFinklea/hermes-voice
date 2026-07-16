@@ -2,6 +2,20 @@ import Foundation
 import UIKit
 import UserNotifications
 
+/// The narrow slice of `HermesVoiceAPI` the registration/unregister flows use.
+/// Extracted so tests can inject a fake that records the ordered register /
+/// unregister calls (url + token) without a live network client. Mirrors the
+/// exact `HermesVoiceAPI` signatures so the real client conforms with an empty
+/// extension and production construction is unchanged.
+protocol DeviceRegistering {
+    func registerDevice(
+        token: String, platform: String, bundleId: String, environment: String
+    ) async throws -> HermesVoiceAPI.DeviceResponse
+    func unregisterDevice(token: String) async throws
+}
+
+extension HermesVoiceAPI: DeviceRegistering {}
+
 /// Coordinates iOS push-notification permission, APNs device-token
 /// registration, and foreground arrival handling.
 ///
@@ -15,6 +29,14 @@ final class NotificationManager: NSObject, ObservableObject {
 
     private weak var settings: AppSettings?
     private weak var conversation: ConversationViewModel?
+
+    /// Factory that builds the device-registration client for a given
+    /// (baseURL, authToken). Defaults to the real `HermesVoiceAPI`; tests inject
+    /// a fake to record register/unregister calls. Injecting the factory (rather
+    /// than a single client) mirrors production: each registration/unregister
+    /// binds a client to a specific backend snapshot, not one shared instance.
+    private let makeRegistrar: (_ baseURL: String, _ authToken: String) -> DeviceRegistering
+
     private var registrationInFlight = false
     /// The token each backend ACTUALLY holds, keyed by backend URL — distinct
     /// from `settings.lastApnsToken`, which is the single last token RECEIVED
@@ -56,7 +78,16 @@ final class NotificationManager: NSObject, ObservableObject {
         let wasForeground: Bool
     }
 
-    private override init() {
+    /// - Parameter makeRegistrar: registration-client factory, defaulting to the
+    ///   real `HermesVoiceAPI` construction the flows previously did inline.
+    ///   Tests inject a fake; `shared` uses the default so production is
+    ///   unchanged.
+    init(
+        makeRegistrar: @escaping (_ baseURL: String, _ authToken: String) -> DeviceRegistering = {
+            HermesVoiceAPI(baseURL: $0, authToken: $1)
+        }
+    ) {
+        self.makeRegistrar = makeRegistrar
         super.init()
         UNUserNotificationCenter.current().delegate = self
     }
@@ -117,6 +148,13 @@ final class NotificationManager: NSObject, ObservableObject {
     /// Called by AppDelegate when APNs hands us a device token.
     func handleAPNsToken(_ deviceToken: Data) {
         let hex = deviceToken.map { String(format: "%02hhx", $0) }.joined()
+        handleAPNsToken(hex: hex)
+    }
+
+    /// The delegate path after hex conversion. Internal (not private) so tests
+    /// can deliver a token by its hex string without constructing the raw
+    /// `Data` the OS hands `handleAPNsToken(_:)` — behavior is identical.
+    func handleAPNsToken(hex: String) {
         guard let settings else { return }
         // Cache the token at RECEIPT — not only after a successful
         // registration. Otherwise a failed first registration would leave
@@ -156,9 +194,10 @@ final class NotificationManager: NSObject, ObservableObject {
     /// hold your device token, so this is what a profile switch calls to
     /// pick the new backend up. No-op when notifications are off or no
     /// token has ever been captured. Unlike `registerToken`'s early return,
-    /// a registration still in flight is waited out and retried once
-    /// (rather than silently dropping the switch-triggered registration) —
-    /// still a single attempt, not a queue.
+    /// a registration still in flight is waited out and retried once — a
+    /// token that rotates mid-flight is already recovered by
+    /// `performRegistrationCoalescing`'s trailing re-register, so this is a
+    /// single attempt, not a queue.
     func registerSavedDeviceWithActiveBackendIfNeeded() {
         guard let settings else { return }
         guard settings.notificationsEnabled, !settings.lastApnsToken.isEmpty else { return }
@@ -204,7 +243,7 @@ final class NotificationManager: NSObject, ObservableObject {
             // registration that just completed (and its coalescing tail).
             let token = self.registeredTokens[previous.url] ?? settings.lastApnsToken
             if !token.isEmpty {
-                let oldAPI = HermesVoiceAPI(baseURL: previous.url, authToken: previous.authToken)
+                let oldAPI = self.makeRegistrar(previous.url, previous.authToken)
                 do {
                     try await oldAPI.unregisterDevice(token: token)
                     // `previous` no longer holds THIS token — but only drop the
@@ -251,9 +290,7 @@ final class NotificationManager: NSObject, ObservableObject {
     }
 
     private func performRegistration(token: String, target: RegistrationTarget) async {
-        let api = HermesVoiceAPI(
-            baseURL: target.url, authToken: target.authToken
-        )
+        let api = makeRegistrar(target.url, target.authToken)
         let bundleId = Bundle.main.bundleIdentifier ?? "dev.finklea.harnessvoice"
         // iOS apps built with debug provisioning use the APNs sandbox env;
         // TestFlight + App Store use production. The TARGET_OS_SIMULATOR
@@ -302,6 +339,10 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             // otherwise fall through to the banner.
             let idle = (conversation?.state ?? .idle) == .idle
             if (settings?.autoPlayScheduledFires ?? true) && idle && !arrivalInFlight {
+                // Set BEFORE spawning: `stopForegroundPlayback()` can race the
+                // task's startup, and reading `arrivalInFlight` before the
+                // spawned task has actually run would no-op the stop.
+                arrivalInFlight = true
                 arrivalTask = Task { await handleForegroundArrival(arrival) }
                 // Suppress the system banner — we play the chime + audio
                 // through our in-app path instead.
@@ -344,11 +385,22 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     }
 
     private func handleForegroundArrival(_ arrival: ScheduledArrival) async {
+        // `arrivalInFlight` is set by the caller (`willPresent`) before this
+        // task is spawned; every exit path here — including the early guard
+        // below — must clear it.
+        defer { arrivalInFlight = false }
+        // A task cancelled before it starts still runs cooperatively, so a
+        // backend switch landing in the gap between spawn and first suspension
+        // would otherwise still acquire the audio session, show the Live
+        // Activity, and blip the chime. Bail before any of that side-effects.
+        // (No suspension point exists between here and the chime — acquire /
+        // showSpeaking are synchronous — so this single pre-start check covers
+        // the whole pre-chime window.)
+        guard !Task.isCancelled else { return }
         // Play the chime (if enabled), then re-synthesize TTS for the reply and
         // play it. Gated to idle in willPresent, so we own the audio session +
         // Live Activity here without fighting the conversation player.
         guard let settings else { return }
-        arrivalInFlight = true
         // Hold the session across chime → reply so they don't churn it between
         // them; the leaf players nest their own (ref-counted) holds.
         AudioSessionCoordinator.shared.acquire(.playback)
@@ -360,7 +412,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             LiveActivityController.shared.finish()
             AudioSessionCoordinator.shared.release()
             arrivalPlayer = nil
-            arrivalInFlight = false
             arrivalTask = nil
         }
 

@@ -55,8 +55,17 @@ final class AppSettings: ObservableObject {
     }
 
     /// The UserDefaults suite backing every persisted property. Injected so
-    /// tests can use an isolated suite instead of `.standard`.
-    private let defaults: UserDefaults
+    /// tests can use an isolated suite instead of `.standard`. Internal (not
+    /// private) so other app-side helpers that need to touch the SAME suite
+    /// (e.g. `SiriSession.clear` from a routing-affecting change) can read it
+    /// instead of hard-coding `.standard`.
+    let defaults: UserDefaults
+
+    /// The fresh-install / never-configured backend URL. Used both to seed a
+    /// brand-new profile and to detect "not really configured yet" (onboarding
+    /// gate, Siri's pre-onboarding guard) — a persisted profile can carry this
+    /// exact URL after migration without the user ever having set one.
+    static let defaultBackendURL = "http://127.0.0.1:8765"
 
     /// The URL, auth token, and harness of the active backend profile. Kept
     /// as top-level published properties (rather than reading through
@@ -343,7 +352,7 @@ final class AppSettings: ObservableObject {
         // profile payload exists yet, and (for backendURL, on that same
         // no-payload path) to preserve the existing fresh-install onboarding
         // gate below.
-        let legacyURL = d.string(forKey: Keys.backendURL) ?? "http://127.0.0.1:8765"
+        let legacyURL = d.string(forKey: Keys.backendURL) ?? Self.defaultBackendURL
         let legacyToken = d.string(forKey: Keys.authToken) ?? ""
         let legacyHarness = d.string(forKey: Keys.selectedHarness) ?? "hermes"
 
@@ -420,7 +429,7 @@ final class AppSettings: ObservableObject {
         // legacy key can be stale once profiles diverge), not the raw legacy
         // key; the no-payload migration path keeps using legacyURL as before.
         let onboardingURL = decodedProfiles != nil ? active.url : legacyURL
-        let configured = onboardingURL != "http://127.0.0.1:8765" && !onboardingURL.isEmpty
+        let configured = onboardingURL != Self.defaultBackendURL && !onboardingURL.isEmpty
         self.hasCompletedOnboarding = d.bool(forKey: Keys.hasCompletedOnboarding) || configured
 
         if needsMigrationPersist {

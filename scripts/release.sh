@@ -121,6 +121,9 @@ EXPORT_PATH="/tmp/HermesVoice-build${NEW_BUILD}-export"
 rm -rf "$ARCHIVE_PATH" "$EXPORT_PATH"
 
 step "Archiving Release for generic iOS"
+# The ASC API key rides on the archive step too (not just export) so
+# provisioning works headlessly on a machine whose Xcode has no signed-in
+# account — -allowProvisioningUpdates alone needs an Xcode account.
 xcodebuild \
     -project "$PROJECT" \
     -scheme "$SCHEME" \
@@ -128,6 +131,9 @@ xcodebuild \
     -archivePath "$ARCHIVE_PATH" \
     -destination 'generic/platform=iOS' \
     -allowProvisioningUpdates \
+    -authenticationKeyPath "$ASC_KEY_PATH" \
+    -authenticationKeyID "$ASC_KEY_ID" \
+    -authenticationKeyIssuerID "$ASC_ISSUER" \
     archive 2>&1 | grep -E "Archive Succeeded|error:|\*\*" | head -8
 
 [[ -d "$ARCHIVE_PATH" ]] || fail "Archive failed — $ARCHIVE_PATH not created"

@@ -759,6 +759,17 @@ final class ConversationViewModel: ObservableObject {
     /// repo (read-only in this phase). Generalizes `resume(sessionId:)`.
     func attach(sessionId: String, harness: String, repo: String?, readOnly: Bool) {
         guard !sessionId.isEmpty else { return }
+        // Belt-and-braces teardown mirroring switchBackend: an old turn's task
+        // may still be live/unwinding when attach lands (a completed stream
+        // flips state to `.idle` BEFORE its task actually finishes), so a late
+        // `.assistant`/`.done` from that task could overwrite the just-attached
+        // session id or clobber state. Cancel it and drop any paused voice
+        // approval/question. Unlike switchBackend, attach deliberately does NOT
+        // `reset()` — it keeps `messages` and carries the attached session,
+        // both set below — and still settles to `.idle`.
+        currentTurn?.cancel()
+        currentTurn = nil
+        clearPending()
         let harnessChanged = harness != settings.selectedHarness
         settings.selectedHarness = harness
         self.sessionId = sessionId

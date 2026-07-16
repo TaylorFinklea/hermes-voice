@@ -22,19 +22,21 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
     /// without touching the shared domain. Production uses `.standard`.
     private let defaults: UserDefaults
 
-    /// The (sessionId, profileId) pair the Watch's current known session was
-    /// last relayed under (nil = no relayed session yet). Stores BOTH the
-    /// session id we handed the Watch AND the profile it was created under.
-    /// Set only after a relay actually hands the Watch a session id (mirrors
-    /// the condition under which `WatchSession.handleResponse` updates its own
-    /// `sessionId`), so a turn that fails mid-switch doesn't wrongly "clear"
-    /// the mismatch. On each incoming turn the relay guard forwards the
-    /// Watch's session id only when it matches BOTH fields — same session id
-    /// AND same active profile — so a post-switch turn (wrong laptop) or a
-    /// delivery that was never confirmed drops the stale id and starts fresh.
-    /// Because the marker holds the id we last SENT the Watch, a failed
+    /// The (sessionId, profileId, harness) triple the Watch's current known
+    /// session was last relayed under (nil = no relayed session yet). Stores
+    /// the session id we handed the Watch, the profile it was created under,
+    /// AND the harness that created it. Set only after a relay actually hands
+    /// the Watch a session id (mirrors the condition under which
+    /// `WatchSession.handleResponse` updates its own `sessionId`), so a turn
+    /// that fails mid-switch doesn't wrongly "clear" the mismatch. On each
+    /// incoming turn the relay guard forwards the Watch's session id only when
+    /// it matches ALL THREE fields — same session id, same active profile, AND
+    /// same active harness — so a post-switch turn (wrong laptop), a harness
+    /// change under the same profile (`attach()` adopting a different harness),
+    /// or a delivery that was never confirmed drops the stale id and starts
+    /// fresh. Because the marker holds the id we last SENT the Watch, a failed
     /// `sendMessage` delivery is self-correcting: the Watch's stale id simply
-    /// won't match the stored pair next turn.
+    /// won't match the stored triple next turn.
     /// Persisted: WCSession can relaunch the phone app in the background
     /// while the Watch app (and its in-memory session id) stays resident,
     /// so an in-memory marker would wrongly drop Watch continuity on every
@@ -42,59 +44,67 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
     private struct RelayMarker: Equatable {
         let sessionId: String
         let profileId: UUID
+        let harness: String
     }
 
     private var relayMarker: RelayMarker? {
         get {
             Self.loadRelayMarker(from: defaults)
-                .map { RelayMarker(sessionId: $0.sessionId, profileId: $0.profileId) }
+                .map { RelayMarker(sessionId: $0.sessionId, profileId: $0.profileId, harness: $0.harness) }
         }
         set {
             Self.saveRelayMarker(
-                newValue.map { (sessionId: $0.sessionId, profileId: $0.profileId) },
+                newValue.map { (sessionId: $0.sessionId, profileId: $0.profileId, harness: $0.harness) },
                 to: defaults
             )
         }
     }
     private static let relayedSessionIdKey = "hv.watch.sessionID"
     private static let relayedSessionProfileKey = "hv.watch.sessionProfileID"
+    private static let relayedSessionHarnessKey = "hv.watch.sessionHarness"
 
-    /// Loads the persisted (sessionId, profileId) relay marker from `defaults`,
-    /// or nil when either key is absent/blank/unparseable. Pure over `defaults`
-    /// so tests round-trip it against an isolated suite; the instance property
-    /// and `clearRelayMarker()` both route through here.
+    /// Loads the persisted (sessionId, profileId, harness) relay marker from
+    /// `defaults`, or nil when any key is absent/blank/unparseable. Pure over
+    /// `defaults` so tests round-trip it against an isolated suite; the instance
+    /// property and `clearRelayMarker()` both route through here. A pre-upgrade
+    /// marker missing the harness key reads as nil — a one-time safe drop.
     static func loadRelayMarker(
         from defaults: UserDefaults
-    ) -> (sessionId: String, profileId: UUID)? {
+    ) -> (sessionId: String, profileId: UUID, harness: String)? {
         guard let sid = defaults.string(forKey: relayedSessionIdKey), !sid.isEmpty,
               let pidString = defaults.string(forKey: relayedSessionProfileKey),
-              let pid = UUID(uuidString: pidString)
+              let pid = UUID(uuidString: pidString),
+              let harness = defaults.string(forKey: relayedSessionHarnessKey)
         else { return nil }
-        return (sessionId: sid, profileId: pid)
+        return (sessionId: sid, profileId: pid, harness: harness)
     }
 
-    /// Persists (or, with nil, clears) the relay marker pair to `defaults`.
+    /// Persists (or, with nil, clears) the relay marker triple to `defaults`.
     static func saveRelayMarker(
-        _ marker: (sessionId: String, profileId: UUID)?, to defaults: UserDefaults
+        _ marker: (sessionId: String, profileId: UUID, harness: String)?, to defaults: UserDefaults
     ) {
         defaults.set(marker?.sessionId, forKey: relayedSessionIdKey)
         defaults.set(marker?.profileId.uuidString, forKey: relayedSessionProfileKey)
+        defaults.set(marker?.harness, forKey: relayedSessionHarnessKey)
     }
 
     /// Pure relay-session decision, lifted out of the WCSession-coupled path so
     /// it's unit-testable. Returns the Watch's `incoming` session id to forward
-    /// ONLY when it's non-empty AND the stored marker matches it on BOTH fields
-    /// — same session id we last handed the Watch AND the profile active now.
-    /// nil means "drop the stale id, start a fresh conversation" (a blank
-    /// incoming id, a session from a different laptop, or a delivery that was
-    /// never confirmed). Mirrors the original inline guard exactly.
+    /// ONLY when it's non-empty AND the stored marker matches it on ALL THREE
+    /// fields — same session id we last handed the Watch, the profile active
+    /// now, AND the harness active now. nil means "drop the stale id, start a
+    /// fresh conversation" (a blank incoming id, a session from a different
+    /// laptop, a session created under a different harness, or a delivery that
+    /// was never confirmed). Mirrors the original inline guard exactly.
     static func resolveRelaySession(
         incoming: String?,
-        stored: (sessionId: String, profileId: UUID)?,
-        activeProfileId: UUID
+        stored: (sessionId: String, profileId: UUID, harness: String)?,
+        activeProfileId: UUID,
+        activeHarness: String
     ) -> String? {
         guard let sid = incoming, !sid.isEmpty else { return nil }
-        guard let stored, stored.sessionId == sid, stored.profileId == activeProfileId
+        guard let stored, stored.sessionId == sid, stored.profileId == activeProfileId,
+              stored.harness == activeHarness
         else { return nil }
         return sid
     }
@@ -141,15 +151,17 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
             return
         }
         let metadata = file.metadata ?? [:]
-        // Forward the Watch's session id ONLY when it matches the stored pair:
-        // the same session id we last handed the Watch AND the profile active
-        // now. Any mismatch — a session id from a different laptop, or one whose
-        // delivery to the Watch was never confirmed — is dropped, starting a
-        // fresh conversation instead of sending laptop A's session id to laptop B.
+        // Forward the Watch's session id ONLY when it matches the stored triple:
+        // the same session id we last handed the Watch AND the profile AND the
+        // harness active now. Any mismatch — a session id from a different
+        // laptop, one created under a different harness, or one whose delivery
+        // to the Watch was never confirmed — is dropped, starting a fresh
+        // conversation instead of forwarding a stale session to the wrong target.
         let sessionId = Self.resolveRelaySession(
             incoming: metadata["session_id"] as? String,
-            stored: relayMarker.map { (sessionId: $0.sessionId, profileId: $0.profileId) },
-            activeProfileId: settings.activeBackendProfile.id
+            stored: relayMarker.map { (sessionId: $0.sessionId, profileId: $0.profileId, harness: $0.harness) },
+            activeProfileId: settings.activeBackendProfile.id,
+            activeHarness: settings.selectedHarness
         )
 
         let api = HermesVoiceAPI(
@@ -162,14 +174,15 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
                 sessionId: sessionId,
                 harness: settings.selectedHarness
             )
-            // Advance the marker to the (sessionId, profileId) we're about to
-            // hand the Watch — but only once there's actually a session id to
-            // compare against next time (empty sessionId means
+            // Advance the marker to the (sessionId, profileId, harness) we're
+            // about to hand the Watch — but only once there's actually a session
+            // id to compare against next time (empty sessionId means
             // WatchSession.handleResponse leaves its stored id untouched too).
             if !response.sessionId.isEmpty {
                 relayMarker = RelayMarker(
                     sessionId: response.sessionId,
-                    profileId: settings.activeBackendProfile.id
+                    profileId: settings.activeBackendProfile.id,
+                    harness: settings.selectedHarness
                 )
             }
             await replyToWatch(response: response)

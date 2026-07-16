@@ -207,9 +207,15 @@ final class NotificationManager: NSObject, ObservableObject {
                 let oldAPI = HermesVoiceAPI(baseURL: previous.url, authToken: previous.authToken)
                 do {
                     try await oldAPI.unregisterDevice(token: token)
-                    // `previous` no longer holds a registration — drop its record
-                    // so a later switch back doesn't DELETE a token it lost.
-                    self.registeredTokens.removeValue(forKey: previous.url)
+                    // `previous` no longer holds THIS token — but only drop the
+                    // record if it still describes the token we just deleted. A
+                    // delayed DELETE response must not erase a NEWER registration's
+                    // record: a rapid switch back can re-register this URL while
+                    // our request was in flight, and that newer token is what a
+                    // later switch away must DELETE.
+                    if self.registeredTokens[previous.url] == token {
+                        self.registeredTokens.removeValue(forKey: previous.url)
+                    }
                 } catch {
                     print("device-token unregister from previous backend failed: \(error)")
                 }

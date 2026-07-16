@@ -1,5 +1,58 @@
 import SwiftUI
 
+/// The main-header control for switching the active backend profile. Renders
+/// the existing agent title on top (unchanged from the old static header)
+/// with the active server's name + a chevron beneath it — the whole thing is
+/// one accessible button that opens a menu of every saved profile plus
+/// "Manage servers…". Disabled (and thus unopenable) whenever `canSwitch` is
+/// false, so a live turn / hands-free session / Watch relay can never be
+/// interrupted by a switch.
+struct BackendProfilePicker: View {
+    @EnvironmentObject var settings: AppSettings
+    let canSwitch: Bool
+    let select: (BackendProfile) -> Void
+    let manage: () -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(settings.backendProfiles) { profile in
+                Button {
+                    select(profile)
+                } label: {
+                    if profile.id == settings.activeBackendProfile.id {
+                        Label(profile.name, systemImage: "checkmark")
+                    } else {
+                        Text(profile.name)
+                    }
+                }
+            }
+            Divider()
+            Button(action: manage) {
+                Text("Manage servers…")
+            }
+        } label: {
+            VStack(spacing: 2) {
+                Text(settings.activeAgentTitle)
+                    .font(HVFont.title)
+                    .tracking(0.8)
+                    .foregroundStyle(settings.agentAccent)
+                HStack(spacing: 3) {
+                    Text(settings.activeBackendProfile.name)
+                        .font(HVFont.micro)
+                        .tracking(0.4)
+                        .foregroundStyle(HVColor.creamDim)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(HVColor.creamDim)
+                }
+            }
+        }
+        .disabled(!canSwitch)
+        .accessibilityLabel("Active server: \(settings.activeBackendProfile.name)")
+        .accessibilityHint(canSwitch ? "" : "Finish or cancel the current turn before switching servers.")
+    }
+}
+
 /// Lists every saved backend connection, opens the editor for add/edit, and
 /// exposes deletion where the model allows it. Selecting/activating a profile
 /// is NOT this view's job — that's the header picker (Task 4). This view also

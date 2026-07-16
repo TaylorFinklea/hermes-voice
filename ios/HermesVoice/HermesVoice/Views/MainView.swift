@@ -5,6 +5,7 @@ struct MainView: View {
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var conversationMode: ConversationModeController
     @StateObject private var notifications = NotificationManager.shared
+    @StateObject private var watchBridge = PhoneWatchBridge.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var activeSheet: ActiveSheet?
     @State private var textInput = ""
@@ -14,7 +15,7 @@ struct MainView: View {
     // a single view shadow each other (History stopped opening once the
     // transcript sheet was added) — so route them all through one `.sheet(item:)`.
     private enum ActiveSheet: String, Identifiable {
-        case settings, history, transcript
+        case settings, history, transcript, servers
         var id: String { rawValue }
     }
 
@@ -79,6 +80,19 @@ struct MainView: View {
                 case .transcript:
                     TranscriptView()
                         .environmentObject(conversation)
+                case .servers:
+                    // BackendProfileManagerView is normally pushed via
+                    // NavigationLink from inside SettingsView's own
+                    // NavigationStack, so unlike the other cases here it
+                    // doesn't wrap itself — do that (and match their
+                    // tint/color-scheme) at this call site instead.
+                    NavigationStack {
+                        BackendProfileManagerView()
+                            .environmentObject(settings)
+                            .environmentObject(conversation)
+                    }
+                    .tint(HVColor.amber)
+                    .preferredColorScheme(.dark)
                 }
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -151,10 +165,11 @@ struct MainView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            Text(settings.activeAgentTitle)
-                .font(HVFont.title)
-                .tracking(0.8)
-                .foregroundStyle(settings.agentAccent)
+            BackendProfilePicker(
+                canSwitch: canSwitchBackendProfile,
+                select: selectBackendProfile,
+                manage: { activeSheet = .servers }
+            )
         }
         ToolbarItem(placement: .topBarLeading) {
             Button { activeSheet = .history } label: {
@@ -178,6 +193,28 @@ struct MainView: View {
             }
             .accessibilityLabel("Settings")
         }
+    }
+
+    /// The header picker only opens when the active backend is actually
+    /// switchable: never mid-turn/pending-approval (`canSwitchBackend`),
+    /// never during hands-free (a switch mid-listen has nowhere sane to
+    /// land), and never while relaying to the Watch (switching out from
+    /// under a live relay would strand it).
+    private var canSwitchBackendProfile: Bool {
+        conversation.canSwitchBackend && !conversationMode.isActive && !watchBridge.isRelaying
+    }
+
+    /// Selecting the already-active profile is a no-op. Otherwise capture
+    /// `previous` before any mutation (switching flips
+    /// `settings.activeBackendProfile`), and only run the APNs handoff +
+    /// notification cleanup once the switch actually lands.
+    private func selectBackendProfile(_ profile: BackendProfile) {
+        guard profile.id != settings.activeBackendProfile.id else { return }
+        let previous = settings.activeBackendProfile
+        guard conversation.switchBackend(to: profile.id) else { return }
+        notifications.clearArrival()
+        notifications.stopForegroundPlayback()
+        notifications.handleBackendSwitch(previous: previous)
     }
 
     /// "New conversation" is available only at rest (idle/error) and only when

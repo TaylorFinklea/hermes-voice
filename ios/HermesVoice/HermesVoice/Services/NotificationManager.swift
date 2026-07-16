@@ -21,6 +21,7 @@ final class NotificationManager: NSObject, ObservableObject {
     // conversation's player over the shared audio session.
     private var arrivalPlayer: AudioPlayer?
     private var arrivalInFlight = false
+    private var arrivalTask: Task<Void, Never>?
 
     /// Most-recently-received scheduled-fire notification, if any. The hero
     /// pane reads this to render a small badge / route to the right session.
@@ -55,6 +56,20 @@ final class NotificationManager: NSObject, ObservableObject {
     /// route into the session, or otherwise dismisses it).
     func clearArrival() {
         lastScheduledArrival = nil
+    }
+
+    /// Best-effort stop of an in-flight scheduled-fire auto-play (chime and/or
+    /// TTS replay) — called when the user switches backend profiles mid-arrival
+    /// so playback tied to the server they just left doesn't keep going.
+    /// Cancelling `arrivalTask` unwinds it if still in the chime/network
+    /// phase; `arrivalPlayer.stop()` (idempotent) covers the case where audio
+    /// is already playing, since `AudioPlayer.play()` awaits a continuation
+    /// that plain task cancellation doesn't resume. No-op when nothing is
+    /// in flight.
+    func stopForegroundPlayback() {
+        guard arrivalInFlight else { return }
+        arrivalTask?.cancel()
+        arrivalPlayer?.stop()
     }
 
     /// Request authorization from the user. Safe to call repeatedly;
@@ -191,7 +206,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             // otherwise fall through to the banner.
             let idle = (conversation?.state ?? .idle) == .idle
             if (settings?.autoPlayScheduledFires ?? true) && idle && !arrivalInFlight {
-                Task { await handleForegroundArrival(arrival) }
+                arrivalTask = Task { await handleForegroundArrival(arrival) }
                 // Suppress the system banner — we play the chime + audio
                 // through our in-app path instead.
                 completionHandler([])
@@ -250,6 +265,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             AudioSessionCoordinator.shared.release()
             arrivalPlayer = nil
             arrivalInFlight = false
+            arrivalTask = nil
         }
 
         if settings.foregroundChimeEnabled {

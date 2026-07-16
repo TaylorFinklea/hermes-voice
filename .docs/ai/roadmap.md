@@ -9,6 +9,7 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 ## Now / Next / Later
 
 ### Now
+- [x] **Server profiles + fast switching** (2026-07-16) — switch one iPhone between independent backends on different laptops. Merged to main (branch `server-profiles`, 9 commits, dual-reviewed: SDD per-task/whole-branch + GPT-5.6 Sol adversarial to convergence). Design/plan: `docs/superpowers/{specs,plans}/2026-07-10-server-profiles*`. APNs v1 = active-only (`decisions.md [2026-07-15]`); v2 multi-backend identity in Backlog. **Pending user:** cut a TestFlight build, then plan Task 5 on-device acceptance (two laptops: routing isolation, switch gating, APNs re-registration). Follow-ups: Backlog "Server-profiles follow-ups".
 - [x] G — App polish + frontend-design redesign (E · Focus / Now-Playing — deepened) — built; awaiting on-device visual review
 - [x] **Spoken conversational filler** (2026-06-26) — kills the dead-silence-during-a-turn that made the app feel bad to use. Instant local ack ("on it, let me look into that") at dispatch + backend contextual tool narration ("checking the weather for you") as an additive `narrate` SSE event, spoken on-device (AVSpeech). Plus a real barge-in fix (stop during `.thinking`/`.sending`). See `current-state.md` + `decisions.md`. **Pending: on-device feel test.** A **"Spoken updates" verbosity setting** (off/quiet/normal/chatty, with a chatty-only heartbeat) shipped 2026-06-26. Deferred: full-duplex talk-over barge-in.
 
@@ -57,6 +58,12 @@ Hermes Voice — voice-native iOS + watchOS interface to a self-hosted Hermes Ag
 ## Backlog
 
 > Self-contained items any agent can execute.
+
+### Server-profiles follow-ups (2026-07-16; from the dual whole-branch reviews — none merge-blocking, all logged deliberately)
+
+- **Test seams + regressions for the switch seam** — inject API/token into `NotificationManager` (cover `handleBackendSwitch` orchestration + token-rotation coalescing + the CAS record removal), route `PhoneWatchBridge`'s `(sessionId, profileId)` marker through injected defaults (cover profile-drop + `isRelaying`), extract `loadHarnesses` fallback logic for testability. `tier_floor: senior` · `complexity: M`
+- **`attach()` continuity gap** — `ConversationViewModel.attach` still writes `settings.selectedHarness` directly; it must keep bypassing the reset (attach carries a session by design) but should invalidate Siri/Watch continuity like other routing changes. `tier_floor: junior` · `complexity: S`
+- **Small polish batch** (one commit): Siri treats the loopback-default URL as unconfigured (pre-onboarding message regression); set `arrivalInFlight` in `willPresent` before spawning (stop-playback race); reword `registerSavedDeviceWithActiveBackendIfNeeded`'s stale "silently dropping" doc line; `@ObservedObject` (not `@StateObject`) for shared singletons in MainView; editor zero-harness `""` save guard; drop/use the no-op `onSaved` callback; auto-clear `harnessApplyHint`; assert on discarded `switchBackend` result in `applyHarnessChange`; collapse the 3-4× profile persists per activate if ever hot. `tier_floor: junior` · `complexity: S`
 
 ### APNs v2 — multi-backend push identity (queued 2026-07-15; move to beads when the dolt backlog DB is wired on this machine)
 

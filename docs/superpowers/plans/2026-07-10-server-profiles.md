@@ -1,5 +1,7 @@
 # Server Profiles and Fast Switching Implementation Plan
 
+> **STATUS (2026-07-16): Tasks 1-4 COMPLETE and merged to main** (branch `server-profiles`, `d4b8035..ce3f5e1`). Tasks 2-4 were executed from Lead-REVISED briefs (`.superpowers/sdd/task-{2,3,4}-brief-revised.md`, git-ignored) after a GPT-5.6 Sol adversarial plan review found gaps in the originals (Watch/Siri identity, APNs routing, save-gate endpoint) — the checkboxes below reflect the original plan and were deliberately NOT ticked; see `.superpowers/sdd/progress.md` for the executed record and `.docs/ai/decisions.md [2026-07-15]` for the APNs active-only decision. **Task 5 (on-device acceptance) remains open — user-run, needs a TestFlight build.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Allow the iPhone app to switch explicitly and safely between saved, independent Hermes Voice backend profiles for different laptops.

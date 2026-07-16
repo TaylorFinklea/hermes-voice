@@ -2,17 +2,13 @@
 
 > Updated at the end of every work session. Read this first.
 
-## ACTIVE — Server profiles (2026-07-15, in flight)
+## Server profiles — MERGED to main (2026-07-16); on-device acceptance pending
 
-Branch: `server-profiles` (worktree `.worktrees/server-profiles`; main untouched). Plan: `docs/superpowers/plans/2026-07-10-server-profiles.md` · design: `docs/superpowers/specs/2026-07-10-server-profiles-design.md`. Executing via subagent-driven development; GPT-5.6 Sol = companion architect/adversarial reviewer. SDD ledger: `.superpowers/sdd/progress.md` (git-ignored).
+Two-laptop backend switching SHIPPED in code: `BackendProfile` persistence + one-time legacy migration; main-header picker; Settings server manager/editor (authenticated `/api/harnesses` save-gate — unauthenticated `/health` can't validate tokens); profile-scoped Watch (`(sessionId, profileId)` pair marker) + Siri (profileID-guarded session, harness routing) continuity; active-only APNs handoff with per-backend registration records (decision: `decisions.md [2026-07-15]`). Branch `server-profiles` (`d4b8035..ce3f5e1`, 9 commits) merged; 71 tests + build green on merged main. Executed via subagent-driven development off `docs/superpowers/plans/2026-07-10-server-profiles.md` with Lead-revised Task 2-4 briefs; GPT-5.6 Sol adversarial-reviewed plan AND branch (4 convergence rounds → MERGE); full trail: `.superpowers/sdd/progress.md` (git-ignored).
 
-- [x] Task 1 — profile model + persistence + migration (`d4b8035`, 58/58 tests) — task review in flight
-- [ ] Task 2 — safe active-profile integration (VM switch guard, Siri, APNs, onboarding)
-- [ ] Task 3 — server management views (health-gated edits)
-- [ ] Task 4 — header picker + switch wiring
-- [?] Task 5 — on-device acceptance (USER, two laptops)
-
-Blockers: none. Open: Sol plan-review verdict pending (first pi run hit a 10-min tool timeout; retry running detached). Landmines: simulator here = iPhone 17 not plan's iPhone 16; xcodegen from worktree churns one cosmetic pbxproj group name — regenerate from primary checkout at merge. Beads: `bd` backlog = dolt repo (~`backlog-hermes-voice`), NOT present on this machine — prose roadmap still canonical here.
+- [?] Task 5 — on-device acceptance (USER): add both laptops as profiles, verify routing isolation, gate during turns/hands-free/Watch relay, APNs re-registration on switch. Needs a TestFlight build first — nothing since build 28 carries any of this.
+- Follow-ups filed → roadmap Backlog "Server-profiles follow-ups (2026-07-16)".
+- Landmine: this machine has iPhone 17 simulators, not iPhone 16 (plan/docs referencing 16 are stale). Beads: `bd` backlog = dolt repo (~`backlog-hermes-voice`), NOT present on this machine — prose roadmap canonical here until wired.
 
 ## Spoken conversational filler — ack + contextual narration (2026-06-26)
 

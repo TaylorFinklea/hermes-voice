@@ -193,6 +193,7 @@ struct BackendProfileEditorView: View {
 
     @State private var saving = false
     @State private var saveError: String?
+    @State private var hydrated = false
 
     var body: some View {
         NavigationStack {
@@ -361,6 +362,12 @@ struct BackendProfileEditorView: View {
     }
 
     private func hydrate() {
+        // The Agent picker is `.navigationLink`-style, so popping back from it
+        // re-fires the editor's `.onAppear` — without this guard that re-appear
+        // would silently revert in-progress edits (and the just-picked harness)
+        // to the stored profile.
+        guard !hydrated else { return }
+        hydrated = true
         guard let existingProfile else { return }
         name = existingProfile.name
         url = existingProfile.url

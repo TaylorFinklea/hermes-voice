@@ -55,8 +55,11 @@ final class AppSettings: ObservableObject {
     }
 
     /// The UserDefaults suite backing every persisted property. Injected so
-    /// tests can use an isolated suite instead of `.standard`.
-    private let defaults: UserDefaults
+    /// tests can use an isolated suite instead of `.standard`. Internal (not
+    /// private) so other app-side helpers that need to touch the SAME suite
+    /// (e.g. `SiriSession.clear` from a routing-affecting change) can read it
+    /// instead of hard-coding `.standard`.
+    let defaults: UserDefaults
 
     /// The URL, auth token, and harness of the active backend profile. Kept
     /// as top-level published properties (rather than reading through

@@ -270,6 +270,26 @@ final class TurnStateMachineTests: XCTestCase {
         XCTAssertNil(vm.attachedRepo)
     }
 
+    /// Regression for the attach() continuity gap: `attach()` deliberately
+    /// carries the conversation forward (no `reset()`) when adopting a
+    /// session under a DIFFERENT harness on the active profile, but that's
+    /// still a routing-affecting change — the persisted Siri session is
+    /// scoped to (session, profile), not harness, so without invalidation it
+    /// would stay "valid" while pointing at a session under the OLD harness.
+    func testAttachClearsPersistedSiriSessionOnHarnessAdoption() throws {
+        let settings = makeSettings()
+        let profileID = settings.activeBackendProfile.id.uuidString
+        SiriSession.save("stale-siri-session", profileID: profileID, defaults: settings.defaults)
+        XCTAssertNotNil(SiriSession.load(profileID: profileID, defaults: settings.defaults))
+
+        let vm = ConversationViewModel(settings: settings, transport: FakeTransport())
+        // `makeSettings()` seeds a fresh profile with the "hermes" default
+        // harness, so attaching under "claude" is a genuine harness change.
+        vm.attach(sessionId: "session-a", harness: "claude", repo: "/tmp/repo", readOnly: true)
+
+        XCTAssertNil(SiriSession.load(profileID: profileID, defaults: settings.defaults))
+    }
+
     func testSwitchBackendRejectedWhileApprovalPending() async throws {
         let settings = makeSettings()
         let other = BackendProfile(name: "Laptop B", url: "https://b.example:8765", authToken: "b", selectedHarness: "codex")

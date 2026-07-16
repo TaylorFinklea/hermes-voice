@@ -105,7 +105,11 @@ struct AskHermesIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let config = SiriBackendConfig.load()
-        guard !config.backendURL.isEmpty else {
+        // A fresh install's migrated profile can carry the loopback default
+        // URL without the user ever having configured a real backend — Siri
+        // must treat that the same as "not configured" rather than actually
+        // attempting a doomed localhost request.
+        guard !config.backendURL.isEmpty, config.backendURL != AppSettings.defaultBackendURL else {
             return .result(dialog: "Harness Voice isn't configured yet. Open the Harness app and set your backend URL first.")
         }
 

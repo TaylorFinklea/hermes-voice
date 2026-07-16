@@ -156,9 +156,10 @@ final class NotificationManager: NSObject, ObservableObject {
     /// hold your device token, so this is what a profile switch calls to
     /// pick the new backend up. No-op when notifications are off or no
     /// token has ever been captured. Unlike `registerToken`'s early return,
-    /// a registration still in flight is waited out and retried once
-    /// (rather than silently dropping the switch-triggered registration) —
-    /// still a single attempt, not a queue.
+    /// a registration still in flight is waited out and retried once — a
+    /// token that rotates mid-flight is already recovered by
+    /// `performRegistrationCoalescing`'s trailing re-register, so this is a
+    /// single attempt, not a queue.
     func registerSavedDeviceWithActiveBackendIfNeeded() {
         guard let settings else { return }
         guard settings.notificationsEnabled, !settings.lastApnsToken.isEmpty else { return }
@@ -302,6 +303,10 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             // otherwise fall through to the banner.
             let idle = (conversation?.state ?? .idle) == .idle
             if (settings?.autoPlayScheduledFires ?? true) && idle && !arrivalInFlight {
+                // Set BEFORE spawning: `stopForegroundPlayback()` can race the
+                // task's startup, and reading `arrivalInFlight` before the
+                // spawned task has actually run would no-op the stop.
+                arrivalInFlight = true
                 arrivalTask = Task { await handleForegroundArrival(arrival) }
                 // Suppress the system banner — we play the chime + audio
                 // through our in-app path instead.
@@ -344,11 +349,14 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     }
 
     private func handleForegroundArrival(_ arrival: ScheduledArrival) async {
+        // `arrivalInFlight` is set by the caller (`willPresent`) before this
+        // task is spawned; every exit path here — including the early guard
+        // below — must clear it.
+        defer { arrivalInFlight = false }
         // Play the chime (if enabled), then re-synthesize TTS for the reply and
         // play it. Gated to idle in willPresent, so we own the audio session +
         // Live Activity here without fighting the conversation player.
         guard let settings else { return }
-        arrivalInFlight = true
         // Hold the session across chime → reply so they don't churn it between
         // them; the leaf players nest their own (ref-counted) holds.
         AudioSessionCoordinator.shared.acquire(.playback)
@@ -360,7 +368,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             LiveActivityController.shared.finish()
             AudioSessionCoordinator.shared.release()
             arrivalPlayer = nil
-            arrivalInFlight = false
             arrivalTask = nil
         }
 

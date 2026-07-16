@@ -66,6 +66,7 @@ struct SettingsView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task { await loadVoices() }
             .task { await loadHarnesses() }
+            .onDisappear { harnessApplyHint = "" }
         }
         .tint(HVColor.amber)
         .preferredColorScheme(.dark)
@@ -311,7 +312,16 @@ struct SettingsView: View {
         }
         let previous = settings.activeBackendProfile
         settings.selectedHarness = newHarness   // updates the active profile's harness
-        conversation.switchBackend(to: previous.id)   // same-id switch → fresh conversation
+        // `switchBackend` runs synchronously right after the passing `canApply`
+        // gate above (same MainActor, nothing async in between), so `false`
+        // here would mean that gate raced true→false or `previous.id` somehow
+        // isn't a known profile — not reachable in practice, but handle the
+        // Bool explicitly rather than silently walking into continuity side
+        // effects for a switch that didn't actually happen.
+        guard conversation.switchBackend(to: previous.id) else {   // same-id switch → fresh conversation
+            harnessApplyHint = "Finish or cancel the current turn, hands-free session, or Watch activity before switching agents."
+            return
+        }
         // Harness-only change: no endpoint change, so no APNs handoff — but
         // Siri/Watch continuity still invalidates (same profile, new agent).
         BackendRouting.applySideEffects(previous: previous, endpointChanged: false)

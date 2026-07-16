@@ -4,8 +4,8 @@ struct MainView: View {
     @EnvironmentObject var conversation: ConversationViewModel
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var conversationMode: ConversationModeController
-    @StateObject private var notifications = NotificationManager.shared
-    @StateObject private var watchBridge = PhoneWatchBridge.shared
+    @ObservedObject private var notifications = NotificationManager.shared
+    @ObservedObject private var watchBridge = PhoneWatchBridge.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var activeSheet: ActiveSheet?
     @State private var textInput = ""

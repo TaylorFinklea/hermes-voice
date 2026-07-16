@@ -210,12 +210,17 @@ struct MainView: View {
         )
     }
 
-    /// Selecting the already-active profile is a no-op. Otherwise capture
+    /// Re-check the composite gate FIRST: the `Menu` is only *disabled* by
+    /// `canSwitch`, so an already-open menu can outlive eligibility — a Watch
+    /// relay or hands-free turn can start after it opened, letting this fire
+    /// while ineligible. Bail before any mutation if no longer eligible.
+    /// Then: selecting the already-active profile is a no-op; otherwise capture
     /// `previous` before any mutation (switching flips
     /// `settings.activeBackendProfile`), and only run the shared post-apply
     /// orchestration once the switch actually lands. A header switch always
     /// moves to a different profile, so the endpoint always changed.
     private func selectBackendProfile(_ profile: BackendProfile) {
+        guard canSwitchBackendProfile else { return }
         guard profile.id != settings.activeBackendProfile.id else { return }
         let previous = settings.activeBackendProfile
         guard conversation.switchBackend(to: profile.id) else { return }

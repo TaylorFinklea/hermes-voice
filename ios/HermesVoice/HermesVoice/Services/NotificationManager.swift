@@ -16,6 +16,12 @@ final class NotificationManager: NSObject, ObservableObject {
     private weak var settings: AppSettings?
     private weak var conversation: ConversationViewModel?
     private var registrationInFlight = false
+    /// The token most recently REGISTERED with a backend — distinct from
+    /// `settings.lastApnsToken`, which is the last token RECEIVED from APNs.
+    /// Nil until a registration succeeds. Used to (a) coalesce a token that
+    /// rotated in mid-registration into a single trailing re-register and
+    /// (b) unregister the token a backend actually holds on a switch.
+    private var lastRegisteredToken: String?
     // A single owned player + guard for foreground scheduled-fire auto-play, so
     // we don't spawn a throwaway AVPlayer per arrival that fights the
     // conversation's player over the shared audio session.
@@ -113,11 +119,15 @@ final class NotificationManager: NSObject, ObservableObject {
     }
 
     private func registerToken(_ token: String, settings: AppSettings) {
+        // An in-flight registration isn't dropped by this early return:
+        // `handleAPNsToken` has already cached this token as
+        // `settings.lastApnsToken`, and the in-flight registration's coalescing
+        // tail re-registers the newest received token once it finishes.
         guard !registrationInFlight else { return }
         registrationInFlight = true
         Task { @MainActor in
             defer { self.registrationInFlight = false }
-            await self.performRegistration(token: token, settings: settings)
+            await self.performRegistrationCoalescing(token: token, settings: settings)
         }
     }
 
@@ -140,7 +150,7 @@ final class NotificationManager: NSObject, ObservableObject {
             }
             self.registrationInFlight = true
             defer { self.registrationInFlight = false }
-            await self.performRegistration(token: token, settings: settings)
+            await self.performRegistrationCoalescing(token: token, settings: settings)
         }
     }
 
@@ -151,7 +161,6 @@ final class NotificationManager: NSObject, ObservableObject {
     /// the now-active backend via `registerSavedDeviceWithActiveBackendIfNeeded()`.
     func handleBackendSwitch(previous: BackendProfile) {
         guard let settings else { return }
-        let token = settings.lastApnsToken
         Task { @MainActor in
             // Wait out any in-flight registration BEFORE the DELETE. Otherwise
             // a stale in-flight POST to the PREVIOUS backend could complete
@@ -161,6 +170,13 @@ final class NotificationManager: NSObject, ObservableObject {
             while self.registrationInFlight {
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
+            // Unregister the token `previous` ACTUALLY holds. A mid-switch APNs
+            // rotation can leave `settings.lastApnsToken` (last RECEIVED) newer
+            // than what was registered, so prefer the last-registered token and
+            // fall back to the cached one only when nothing has registered yet.
+            // Captured AFTER the wait so it reflects any registration that just
+            // completed (and its coalescing tail).
+            let token = self.lastRegisteredToken ?? settings.lastApnsToken
             if !token.isEmpty {
                 let oldAPI = HermesVoiceAPI(baseURL: previous.url, authToken: previous.authToken)
                 do {
@@ -171,6 +187,21 @@ final class NotificationManager: NSObject, ObservableObject {
             }
             self.registerSavedDeviceWithActiveBackendIfNeeded()
         }
+    }
+
+    /// Runs one registration, then coalesces a mid-registration token rotation:
+    /// if APNs delivered a newer token while we were registering `token` (the
+    /// cached received token now differs from what we just attempted), register
+    /// that newer token exactly ONCE more. A burst of rotations collapses to a
+    /// single trailing re-register; a rotation during the follow-up coalesces
+    /// the same way. Comparing against the just-attempted `token` (not the last
+    /// successfully-registered token) means a failed registration with no newer
+    /// token stops here instead of retrying in a loop.
+    private func performRegistrationCoalescing(token: String, settings: AppSettings) async {
+        await performRegistration(token: token, settings: settings)
+        let received = settings.lastApnsToken
+        guard !received.isEmpty, received != token else { return }
+        await performRegistrationCoalescing(token: received, settings: settings)
     }
 
     private func performRegistration(token: String, settings: AppSettings) async {
@@ -193,8 +224,11 @@ final class NotificationManager: NSObject, ObservableObject {
                 bundleId: bundleId,
                 environment: env
             )
-            // Token is already cached at receipt (see `handleAPNsToken`), so
-            // no need to re-store it here on success.
+            // `settings.lastApnsToken` is already cached at receipt (see
+            // `handleAPNsToken`). Record which token this backend now actually
+            // holds so a switch DELETE and the coalescing check use the
+            // registered token rather than the last received one.
+            self.lastRegisteredToken = token
         } catch {
             // Backend down or token rejected. Token cached locally so
             // we retry next launch; no error UI here (this is silent).

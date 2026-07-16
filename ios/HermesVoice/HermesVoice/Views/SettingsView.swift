@@ -326,17 +326,27 @@ struct SettingsView: View {
             harnesses = try await api.listHarnesses()
             harnessesError = ""
             // If the persisted selection is no longer offered (e.g. a CLI was
-            // uninstalled), fall back to the first available agent. This writes
-            // `settings.selectedHarness` DIRECTLY — deliberately: it's an
-            // automatic correction, not a user switch, so it persists through
-            // the active profile without the gate/switch teardown (there's no
-            // live conversation to protect on a fresh Settings load, and the
-            // selected agent genuinely no longer exists on this backend).
+            // uninstalled), fall back to the first available agent. The
+            // session's harness no longer exists on this backend, so continuing
+            // it is impossible — route the correction through the SAME gated
+            // apply path a user-driven change uses (gate + same-id switch +
+            // continuity invalidation), NOT a direct `settings.selectedHarness`
+            // write that would send a live session id under the fallback agent
+            // with Watch/Siri guards blind (the profile UUID is unchanged).
             if !harnesses.isEmpty,
-               !harnesses.contains(where: { $0.harnessId == settings.selectedHarness && $0.available }) {
-                if let fallback = harnesses.first(where: { $0.available }) ?? harnesses.first {
-                    settings.selectedHarness = fallback.harnessId
+               !harnesses.contains(where: { $0.harnessId == settings.selectedHarness && $0.available }),
+               let fallback = harnesses.first(where: { $0.available }) ?? harnesses.first {
+                if BackendRouting.canApply(
+                    conversation: conversation,
+                    conversationMode: conversationMode,
+                    watchBridge: watchBridge
+                ) {
+                    applyHarnessChange(fallback.harnessId)
                 }
+                // else: a live turn / hands-free / Watch relay is in flight —
+                // DEFER; write nothing this load and leave the stored selection
+                // so the next Settings load or user action retries, rather than
+                // silently re-routing an active session.
             }
         } catch let HermesVoiceAPI.APIError.httpStatus(code, _) where code == 401 {
             harnessesError = "Auth token required — add it under Backend above."

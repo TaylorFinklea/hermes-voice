@@ -138,9 +138,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(foregroundChimeEnabled, forKey: Keys.foregroundChimeEnabled) }
     }
 
-    /// Last APNs device token we registered with the backend. Stored so
-    /// the diagnostics view can show what's registered; not used to skip
-    /// re-registration (NotificationManager handles that).
+    /// Last APNs device token RECEIVED from APNs — not necessarily the one a
+    /// backend currently holds (NotificationManager tracks the registered token
+    /// separately). Stored so a later profile switch can register this device
+    /// with the new backend, and diagnostics can show the token.
     @Published var lastApnsToken: String {
         didSet { defaults.set(lastApnsToken, forKey: Keys.lastApnsToken) }
     }
